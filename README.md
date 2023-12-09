@@ -14,4 +14,3 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 - arra az otsura ranezni mert szar (ures kepek)
 - check on & visualize masks with vizBatch
-- normalize needs global stds & means
