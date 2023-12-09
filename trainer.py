@@ -59,8 +59,9 @@ for h5file in h5files:
 
 full_ds = torch.utils.data.ConcatDataset(datasets)
 
-# determine global means and stds for the full dataset (this takes time)
-mean, std = helpers.ds_means_stds.mean_stds(full_ds)
+# determine global means and stds for the full dataset (reads ~5GB/min)
+# mean, std = helpers.ds_means_stds.mean_stds(full_ds)
+# if done, just write it back to v2.Normalize() and run again
 
 # (optional) with fixed generator for reproducible split results (https://pytorch.org/docs/stable/data.html#torch.utils.data.random_split)
 generator = torch.Generator().manual_seed(42)
@@ -84,22 +85,23 @@ test_loader = torch.utils.data.DataLoader(
 
 # plot a batch of tiles
 def vizBatch(batch_tensor, tile_labels):
-    # Create a grid of subplots
+    # create a grid of subplots
     _, axes = plt.subplots(4, 4, figsize=(8, 8))
     axes = axes.flatten()
 
     for i, (ax, img) in enumerate(zip(axes, batch_tensor)):
-        ax.imshow(img.permute(1, 2, 0).numpy()) #imshow requires (w,h,c) shape
+        # imshow requires (w,h,c) shape
+        ax.imshow(img.permute(1, 2, 0).numpy()) 
         ax.axis("off")
-        # Extracting label for the current tile
+        # extract label for the current tile
         label = ", ".join([f"{v[i]}" for _, v in tile_labels.items()])
-        # Draw the text on each image
+        # draw label on each image
         ax.text(3, 10, label, color="white", fontsize=6, backgroundcolor="black")
 
     plt.tight_layout()
     plt.show()
 
-# Get a batch of transformed training data just to visualize
+# get a batch of transformed training data just to visualize
 images, tile_masks, tile_labels, slide_labels = next(iter(train_loader))
 # vizBatch(images, tile_labels)
 
@@ -122,9 +124,11 @@ print(f"Using {device}")
 
 model = ResNet.to(device)
 
+start_time = time.time()
+
 # hyper-params
-num_epochs = 1
-learning_rate = 0.005
+num_epochs = 2
+learning_rate = 0.001
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
@@ -154,10 +158,11 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
+        
         if (i+1) % 100 == 0:
-            print ("Epoch [{}/{}], Step [{}/{}] Loss: {:.4f}"
-                   .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
+            time_elapsed = time.time() - start_time
+            print ("Epoch [{}/{}], Step [{}/{}] Loss: {:.4f} in {:.0f}m {:.0f}s"
+                   .format(epoch+1, num_epochs, i+1, total_step, loss.item(), time_elapsed // 60, time_elapsed % 60))
 
     # decay learning rate
     if (epoch+1) % 20 == 0:
@@ -180,8 +185,7 @@ with torch.no_grad():
 
     print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
 
-# Save the model checkpoint
+# save model checkpoint
 PATH = '"G:\\echinov3\\clinical\\training_checkpoints\\"'
 torch.save(model.state_dict(), PATH+"resnet.ckpt")
-
 pass
