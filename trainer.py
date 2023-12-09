@@ -10,12 +10,12 @@
 import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
+import helpers.ds_means_stds
+import time
 import torch
 import pathml
-import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from torchvision.utils import make_grid
 from torchvision.models import resnet
 from torchvision.transforms import (
     v2,
@@ -58,6 +58,9 @@ for h5file in h5files:
     datasets.append(TransformedPathmlTileSet(h5file))
 
 full_ds = torch.utils.data.ConcatDataset(datasets)
+
+# determine global means and stds for the full dataset (this takes time)
+mean, std = helpers.ds_means_stds.mean_stds(full_ds)
 
 # (optional) with fixed generator for reproducible split results (https://pytorch.org/docs/stable/data.html#torch.utils.data.random_split)
 generator = torch.Generator().manual_seed(42)
@@ -120,8 +123,8 @@ print(f"Using {device}")
 model = ResNet.to(device)
 
 # hyper-params
-num_epochs = 2
-learning_rate = 0.001
+num_epochs = 1
+learning_rate = 0.005
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
@@ -141,11 +144,11 @@ for epoch in range(num_epochs):
         images = images.to(device)
         
         # kukazzuk ha a labelek jol lesznek fenn (ld README) vagy collate_fn
-        tile_labels = torch.tensor([int(label_mapping.get(tl)) for tl in tile_labels.get('class')]).to(device)
+        labels = torch.tensor([int(label_mapping.get(tl)) for tl in tile_labels.get('class')]).to(device)
 
         # forward pass
         outputs = model(images)
-        loss = criterion(outputs, tile_labels)
+        loss = criterion(outputs, labels)
 
         # backward and optimize
         optimizer.zero_grad()
@@ -166,9 +169,10 @@ model.eval()
 with torch.no_grad():
     correct = 0
     total = 0
-    for images, labels in test_loader:
+    for i, (images, tile_masks, tile_labels, slide_labels) in enumerate(test_loader):
         images = images.to(device)
-        labels = labels.to(device)
+        # kukazzuk ha a labelek jol lesznek fenn (ld README) vagy collate_fn
+        labels = torch.tensor([int(label_mapping.get(tl)) for tl in tile_labels.get('class')]).to(device)
         outputs = model(images)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
