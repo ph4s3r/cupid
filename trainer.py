@@ -22,13 +22,13 @@ from torchvision.transforms import (
 )  # v2 is the newest / fastest: https://pytorch.org/vision/stable/transforms.html
 
 # set h5path directory
-h5folder = Path("G:\\echinov3\\h5\\")
+h5folder = Path("G:\\echino\\h5\\")
 h5files = list(h5folder.glob("*.h5path"))
 
-# tile transformations based on resnet18 requirements (https://pytorch.org/hub/pytorch_vision_resnet/)
-# need (3,h,w) shape
-# need normalization with mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-# values need to be converted to range [0,1]
+# tile transformations based on resnet18 requirements (https://pytorch.org/hub/pytorch_vision_resnet/) it needs:
+# - (3,h,w) shape
+# - normalization (with global means and stds)
+#  - values to be converted to range [0,1]
 
 # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
 transforms = v2.Compose(
@@ -36,7 +36,7 @@ transforms = v2.Compose(
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
-        # v2.Normalize(                                         # need to get the global means and stds to do this
+        # v2.Normalize(                                         # after getting the values, re-run
         #     mean=[0.485, 0.456, 0.406],
         #     std=[0.229, 0.224, 0.225]
         # ),
