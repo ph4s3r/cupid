@@ -12,8 +12,10 @@ if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 import torch
 import pathml
+import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from torchvision.utils import make_grid
 from torchvision.models import resnet
 from torchvision.transforms import (
     v2,
@@ -96,14 +98,21 @@ def vizBatch(batch_tensor, tile_labels):
 
 # Get a batch of transformed training data just to visualize
 images, tile_masks, tile_labels, slide_labels = next(iter(train_loader))
-vizBatch(images, tile_labels)
+# vizBatch(images, tile_labels)
 
-class_names = list(set(slide_labels.get('class')))
+# elnezest
+label_mapping = {classname: i for i, classname in enumerate(set(slide_labels.get('class')))}
 
 # pretrained resnet18 (https://pytorch.org/vision/main/models/generated/torchvision.models.resnet18.html#torchvision.models.ResNet18_Weights)
 ResNet = torch.hub.load(
     "pytorch/vision:v0.10.0", "resnet18", weights=resnet.ResNet18_Weights.IMAGENET1K_V1
 )
+
+# a se_resnet50 from torch hub
+# hub_model = torch.hub.load(
+#     'moskomule/senet.pytorch',
+#     'se_resnet50',
+#     pretrained=True,)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
@@ -116,7 +125,7 @@ learning_rate = 0.001
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
 # to update learning rate
 def update_lr(optimizer, lr):    
@@ -126,14 +135,17 @@ def update_lr(optimizer, lr):
 # train
 total_step = len(train_loader)
 curr_lr = learning_rate
+
 for epoch in range(num_epochs):
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, tile_masks, tile_labels, slide_labels) in enumerate(train_loader):
         images = images.to(device)
-        labels = labels.to(device)
+        
+        # kukazzuk ha a labelek jol lesznek fenn (ld README) vagy collate_fn
+        tile_labels = torch.tensor([int(label_mapping.get(tl)) for tl in tile_labels.get('class')]).to(device)
 
         # forward pass
         outputs = model(images)
-        loss = criterion(outputs, labels)
+        loss = criterion(outputs, tile_labels)
 
         # backward and optimize
         optimizer.zero_grad()
@@ -165,6 +177,7 @@ with torch.no_grad():
     print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
 
 # Save the model checkpoint
-torch.save(model.state_dict(), 'resnet.ckpt')
+PATH = '"G:\\echinov3\\clinical\\training_checkpoints\\"'
+torch.save(model.state_dict(), PATH+"resnet.ckpt")
 
 pass
