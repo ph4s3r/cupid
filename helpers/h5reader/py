@@ -1,0 +1,69 @@
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+folder = 'G:\\echinov3\\h5-bad-annotation\\'
+
+file = "echino41.tif.h5path"
+
+h5file = h5py.File(folder+file, 'r')
+
+
+# Get the tile dimensions
+tile_width = h5file['/tiles/tile0/data'].shape[1]
+tile_height = h5file['/tiles/tile0/data'].shape[0]
+
+# Get the total number of tiles
+num_tiles_x = h5file['/tiles/tile0'].attrs['numTilesX']
+num_tiles_y = h5file['/tiles/tile0'].attrs['numTilesY']
+
+# # masks = root['masks']
+# tiles = root['tiles']
+# # fields = root['fields']
+# # counts = root['counts']
+
+# # print("name of stuff: ",root.name)
+# # print("list of keys: ",list(root.keys()))
+# # print("num of masks found:", len(masks))
+# print("num of tiles found:", len(tiles))
+# # print("num of fields found:", len(fields))
+# # print("num of counts found:", len(counts))
+
+# for i in root['fields']:
+#     print(f":::: {i}")
+
+# showtiles = 10
+
+# print("displaying keys: ")
+# for  i, key in enumerate(tiles):
+#     if showtiles == 0:
+#         break
+#     showtiles = showtiles - 1
+#     print(f"key {i}: {key}")
+
+# for attr in root['tiles'].attrs:
+#     print(f"{attr}: {root['tiles'].attrs[attr]}")
+
+# # print("display tiles: ")
+
+# # # tile_shape = root['tiles']['(0, 0)']['array'].shape
+
+# # im_slice = root['tiles']['(0, 0)']['array'][0:500, 0:500, :]
+
+# # # print(im_slice)
+
+# # im_slice = im_slice.astype('uint8')
+# # plt.imshow(im_slice, cmap='gray')
+# # plt.show()
+
+
+# reconstructed_image = np.zeros((1251, 3685), dtype='uint8')
+
+# for tile_key in tiles:
+#     # Extract tile coordinates from the key
+#     # Assuming tile_coords is a tuple (x, y)
+#     tile = root['tiles'][tile_key]['array'][...]
+     
+
+
+# plt.imshow(reconstructed_image)
+# plt.show()
