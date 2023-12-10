@@ -26,8 +26,6 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # todos
 
-- arra az otsura ranezni mert szar (csomo ures kep van)
-- prep one-tile transform checker for PathML
 - run on Ubuntu
 - plot learning curve
 - visual inference + heatmap
