@@ -4,11 +4,11 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # project structure
 
-- atomrunner: reads geojson files (and wsi's for the original slide dimensions) and generates numpy.ndarrays that are the standard format of annotations of the new PathML masks, writes them out in numpy (.npy) array dump format
-- pathml-preprocessing: reading wsi's (+ annotations produced by atomrunner if required) and producing h5path files with pathml
-- trainer: reading h5path and training a model
+- pathML-PipelineRunnner: reading wsi's (+ annotations produced by atomrunner if required) and producing h5path files with pathml
+- PyTorch-Trainer: reading h5path and training a model
 - in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
-- pathML-BinaryThreshold.py: tool to load a wsi to find the right binary threshold
+- pathML-Transforms: tool to load a wsi and check how a set of transforms like binary threshold, morphopen, etc make the mask look like 
+- Annotator: reads geojson files (and wsi's for the original slide dimensions) and generates numpy.ndarrays that are the standard format of annotations of the new PathML masks, writes them out in numpy (.npy) array dump format
 
 # versions
 
