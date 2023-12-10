@@ -9,9 +9,9 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 - trainer: reading h5path and training a model
 - in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
 
-# constraints
+# versions
 
-- tested only on windows so far
+- tested only on windows: Anaconda / Python 3.9.18
 - made with PathML 2.1.1 & torch 2.1.1+cu121
 
 # concepts
@@ -23,7 +23,13 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
     - class: 0 or 1 or other integer
     - file: <p091>
 
-# todo
+# todos
 
 - arra az otsura ranezni mert szar (csomo ures kep van)
 - check on & visualize masks with vizBatch
+- prep one-tile transform checker for PathML
+- run on Ubuntu
+- plot learning curve
+- visual inference + heatmap
+- albumentations
+- feature extraction
