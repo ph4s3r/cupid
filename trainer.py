@@ -127,7 +127,7 @@ model = ResNet.to(device)
 start_time = time.time()
 
 # hyper-params
-num_epochs = 2
+num_epochs = 10
 learning_rate = 0.001
 
 # loss and optimizer

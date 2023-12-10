@@ -1,4 +1,4 @@
-import atom
+import helpers.annotationreader.atom as atom
 
 from pathml import types
 from pathml.core import SlideData
@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # set working directory
-base_dir = Path("G:\echinov3")
+base_dir = Path("G:\echino")
 # wsi folder
 wsi_subfolder = "wsi"
 # place geojsons into this folder inside base with same name as the image (echino23.tiff / echino38.gejson)
@@ -37,7 +37,7 @@ for wsi in wsi_paths:
     print(f"Creating mask_array for {geojson_file} took {time_elapsed} s")
 
     np.save(f"{str(numpy_mask_dir)}\{filename}", mask_array, allow_pickle=True)
-    print(f"wrote annotation mask to disk G:\echinov3\wsiannotation-dumps\{filename}")
+    print(f"wrote annotation mask to disk {str(numpy_mask_dir)}\{filename}.npy")
 
     # plotting wsi
 _, axs = plt.subplots(figsize=(2, 2))
