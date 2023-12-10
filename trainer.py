@@ -103,7 +103,7 @@ test_loader = torch.utils.data.DataLoader(
 # plot a batch of tiles with masks
 def vizBatch(batch_tensor, tile_labels, tile_masks):
     # create a grid of subplots
-    _, axes = plt.subplots(4, 4, figsize=(12, 12))  # Adjust figsize as needed
+    _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
     axes = axes.flatten()
 
     for i in range(8):  # Display only the first 8 tiles, duplicated
@@ -118,7 +118,7 @@ def vizBatch(batch_tensor, tile_labels, tile_masks):
 
         # Display image with mask overlay
         axes[2*i + 1].imshow(img)
-        axes[2*i + 1].imshow(mask, alpha=0.3, cmap='jet')  # adjust alpha as needed
+        axes[2*i + 1].imshow(mask, alpha=1, cmap='Dark2')  # adjust alpha as needed
         axes[2*i + 1].axis("off")
 
     plt.tight_layout()
