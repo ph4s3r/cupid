@@ -45,8 +45,19 @@ transforms = v2.Compose(
         #     mean=[0.485, 0.456, 0.406],
         #     std=[0.229, 0.224, 0.225]
         # ),
-        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range (this one always works)
-        v2.Resize(size=(256, 256), antialias=True)              # 
+        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
+        v2.Resize(size=(256, 256), antialias=True)              # anything between 224 and 500 should work
+    ]
+)
+
+maskforms = v2.Compose(
+    [
+        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
+        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
+        v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
+        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
+        v2.Lambda(lambda x: torch.where(x > 0, 1, 0.)),         # step function
+        v2.Resize(size=(256, 256), antialias=False)             # anything between 224 and 500 should work
     ]
 )
 
@@ -55,6 +66,7 @@ class TransformedPathmlTileSet(pathml.ml.TileDataset):
         tile_image, tile_masks, tile_labels, slide_labels = super(TransformedPathmlTileSet, self).__getitem__(idx)
 
         tile_image = transforms(tile_image)
+        tile_masks = maskforms(tile_masks)
 
         return (tile_image, tile_masks, tile_labels, slide_labels)
 
@@ -75,7 +87,7 @@ train_cases, val_cases, test_cases = torch.utils.data.random_split(
     full_ds, [0.7, 0.2, 0.1], generator=generator
 )
 
-batch_size = 48
+batch_size = 16
 
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
@@ -88,27 +100,34 @@ test_loader = torch.utils.data.DataLoader(
     test_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
 
-# plot a batch of tiles
-def vizBatch(batch_tensor, tile_labels):
+# plot a batch of tiles with masks
+def vizBatch(batch_tensor, tile_labels, tile_masks):
     # create a grid of subplots
-    _, axes = plt.subplots(4, 4, figsize=(8, 8))
+    _, axes = plt.subplots(4, 4, figsize=(12, 12))  # Adjust figsize as needed
     axes = axes.flatten()
 
-    for i, (ax, img) in enumerate(zip(axes, batch_tensor)):
-        # imshow requires (w,h,c) shape
-        ax.imshow(img.permute(1, 2, 0).numpy()) 
-        ax.axis("off")
-        # extract label for the current tile
+    for i in range(8):  # Display only the first 8 tiles, duplicated
+        img = batch_tensor[i].permute(1, 2, 0).numpy()
+        mask = tile_masks[i].permute(1, 2, 0).numpy()
+
+        # Display image without mask
+        axes[2*i].imshow(img)
+        axes[2*i].axis("off")
         label = ", ".join([f"{v[i]}" for _, v in tile_labels.items()])
-        # draw label on each image
-        ax.text(3, 10, label, color="white", fontsize=6, backgroundcolor="black")
+        axes[2*i].text(3, 10, label, color="white", fontsize=6, backgroundcolor="black")
+
+        # Display image with mask overlay
+        axes[2*i + 1].imshow(img)
+        axes[2*i + 1].imshow(mask, alpha=0.3, cmap='jet')  # adjust alpha as needed
+        axes[2*i + 1].axis("off")
 
     plt.tight_layout()
     plt.show()
 
+
 # get a batch of transformed training data just to visualize
 images, tile_masks, tile_labels, slide_labels = next(iter(train_loader))
-# vizBatch(images, tile_labels)
+vizBatch(images, tile_labels, tile_masks)
 
 # elnezest
 label_mapping = {classname: i for i, classname in enumerate(set(slide_labels.get('class')))}
@@ -133,7 +152,7 @@ start_time = time.time()
 
 # hyper-params
 num_epochs = 10
-learning_rate = 0.001
+learning_rate = 0.002
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
@@ -191,5 +210,6 @@ with torch.no_grad():
     print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
 
 # save model checkpoint
-torch.save(model.state_dict(), PATH+"resnet.ckpt")
+dtcomplete = time.strftime("%Y%m%d-%H%M%S")
+torch.save(model.state_dict(), str(model_checkpoint_dir)+"\\"+"resnet18-"+dtcomplete+".ckpt")
 pass
