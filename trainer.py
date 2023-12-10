@@ -1,16 +1,19 @@
 ##########################################################################################################
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2023 Dec 9                                                                               #
+# Last updated: 2023 Dec 10                                                                              #
 # This workbook loads wsi processed slides/tiles h5path file and trains a deep learning model with them  #
 # Input: h5path files                                                                                    #
 # Output: trained model & results                                                                        #
 ##########################################################################################################
 
+
 # imports
 import os
+# local files
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 import helpers.ds_means_stds
+# pip
 import time
 import torch
 import pathml
@@ -19,11 +22,13 @@ from pathlib import Path
 from torchvision.models import resnet
 from torchvision.transforms import (
     v2,
-)  # v2 is the newest / fastest: https://pytorch.org/vision/stable/transforms.html
+)  # v2 is the newest: https://pytorch.org/vision/stable/transforms.html
 
 # set h5path directory
 h5folder = Path("G:\\echino\\h5\\")
 h5files = list(h5folder.glob("*.h5path"))
+model_checkpoint_dir = Path("G:\\echino\\training_checkpoints\\")
+model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
 # tile transformations based on resnet18 requirements (https://pytorch.org/hub/pytorch_vision_resnet/) it needs:
 # - (3,h,w) shape
@@ -41,7 +46,7 @@ transforms = v2.Compose(
         #     std=[0.229, 0.224, 0.225]
         # ),
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range (this one always works)
-        v2.RandomResizedCrop(size=(224, 224), antialias=True)   # 224 is probably the optimal size, but can be tuned
+        v2.Resize(size=(256, 256), antialias=True)              # 
     ]
 )
 
@@ -186,6 +191,5 @@ with torch.no_grad():
     print('Accuracy of the model on the test images: {} %'.format(100 * correct / total))
 
 # save model checkpoint
-PATH = '"G:\\echinov3\\clinical\\training_checkpoints\\"'
 torch.save(model.state_dict(), PATH+"resnet.ckpt")
 pass
