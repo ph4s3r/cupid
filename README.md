@@ -32,4 +32,6 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 - plot learning curve
 - visual inference + heatmap
 - albumentations
+- auc
+- test accuracy
 - feature extraction
