@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # set working directory
-base_dir = Path("G:\echino")
+base_dir = Path("G:\echinov2")
 # wsi folder
 wsi_subfolder = "wsi"
 # place geojsons into this folder inside base with same name as the image (echino23.tiff / echino38.gejson)
@@ -19,6 +19,7 @@ numpy_mask_subfolder = "wsiannotation-dumps"
 data_dir = base_dir / Path(wsi_subfolder)               # input
 geojson_dir = base_dir / Path(geojson_subfolder)        # input 
 numpy_mask_dir = base_dir / Path(numpy_mask_subfolder)  # output
+numpy_mask_dir.mkdir(parents=True, exist_ok=True)       # create if does not exist
 
 # read wsi files
 wsi_paths = list(data_dir.glob("*.tif"))
