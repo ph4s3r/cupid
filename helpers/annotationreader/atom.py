@@ -1,9 +1,12 @@
+
+import os
+if os.name == 'nt':
+    import helpers.openslideimport #on windows, openslide needs to be installed manually, check local openslideimport.py
+
 import geojson
 import numpy as np
 import matplotlib.path as mp
 from shapely.geometry import shape
-import openslideimport
-
 
 def annotationToMask(slide_shape: tuple(), slide_name, geojson_file_path=str) -> np.ndarray:
     # converts geojson file of H&E image into pathml slide mask array object

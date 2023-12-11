@@ -25,7 +25,7 @@ from torchvision.transforms import (
 )  # v2 is the newest: https://pytorch.org/vision/stable/transforms.html
 
 # set h5path directory
-h5folder = Path("G:\\echino\\h5\\")
+h5folder = Path("G:\\echinov2\\h5\\")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = Path("G:\\echino\\training_checkpoints\\")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -101,13 +101,13 @@ test_loader = torch.utils.data.DataLoader(
 )
 
 # plot a batch of tiles with masks
-def vizBatch(batch_tensor, tile_labels, tile_masks):
+def vizBatch(im, tile_labels, tile_masks):
     # create a grid of subplots
     _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
     axes = axes.flatten()
 
     for i in range(8):  # Display only the first 8 tiles, duplicated
-        img = batch_tensor[i].permute(1, 2, 0).numpy()
+        img = im[i].permute(1, 2, 0).numpy()
         mask = tile_masks[i].permute(1, 2, 0).numpy()
 
         # Display image without mask
@@ -118,12 +118,11 @@ def vizBatch(batch_tensor, tile_labels, tile_masks):
 
         # Display image with mask overlay
         axes[2*i + 1].imshow(img)
-        axes[2*i + 1].imshow(mask, alpha=1, cmap='Dark2')  # adjust alpha as needed
+        axes[2*i + 1].imshow(mask, alpha=1, cmap='terrain')  # adjust alpha as needed
         axes[2*i + 1].axis("off")
 
     plt.tight_layout()
     plt.show()
-
 
 # get a batch of transformed training data just to visualize
 images, tile_masks, tile_labels, slide_labels = next(iter(train_loader))

@@ -15,28 +15,28 @@
 #########
 
 # set the path of wsi files
-wsi_folder = "G:\\echinov2\\wsi\\"
+wsi_folder = "G:\\placenta\\wsi"
 
 #######################################
 # configure transformation parameters #
 #######################################
 
 # binary transformation
-bt_otsu = False
+bt_otsu = True
 bt_threshold = 225 # ignored if otsu=True
 bt_inverse = False
 
-# morphCLose
-ckernel = 5
-citer = 2
-
 # morphOpen
-okernel = 5
+okernel = 10
 oiter = 5
 
+# morphCLose
+ckernel = 40
+citer = 5
+
 # foreground detection
-fgd_min_region_size = 500
-fgd_max_hole_size = 1500
+fgd_min_region_size = 5000
+fgd_max_hole_size = 5500
 fgd_outer_contours_only = False # always False except on purpose!
 
 ################################################################
@@ -48,9 +48,8 @@ import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 
+import random
 import numpy as np
-from pathml.core import HESlide, Tile, types
-import matplotlib.pyplot as plt
 from pathlib import Path
 from pathml.preprocessing import (
     ForegroundDetection,
@@ -58,38 +57,52 @@ from pathml.preprocessing import (
     MorphClose,
     MorphOpen,
 )
+import matplotlib.pyplot as plt
+from pathml.core import HESlide, Tile, types
 
 fontsize = 8
 
-def show(wsi):
+def transform_and_plot(wsi):
     pml_wsi = HESlide(
         wsi,
         backend="openslide",
         slide_type=types.HE,
     )
 
+    print("some details of ", pml_wsi.name)
     print("shape: ", pml_wsi.shape)
     print("level_count: ", pml_wsi.slide.level_count)
     print("level_dimensions (h,w): ", pml_wsi.slide.slide.level_dimensions)
     try:
         print("color profile: ", pml_wsi.slide.slide.color_profile.profile.profile_description)
     except:
-        print("Warning: this file has been most possibly modified - missing color profile and probably other information")
+        print("no color profile information found")
     print("rgb?: ", pml_wsi.slide_type.rgb)
     print("masks: ", len(pml_wsi.masks))
     print("tiles: ", len(pml_wsi.tiles))
+    print("labels: ", pml_wsi.labels)
 
-    resolution_level = 4
+    try:
+        resolution_level = 6   # smaller level = bigger image
+        print("Working with pyramid resolution level", resolution_level, "shape:", region.shape[0:1])
+        # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
+        region = pml_wsi.slide.extract_region(
+            location=(0, 0),
+            size=(pml_wsi.slide.slide.level_dimensions[resolution_level][1], pml_wsi.slide.slide.level_dimensions[resolution_level][0]),
+            level=resolution_level
+            )
+    except:
+        print("Resolution level not found, using original size")
+        # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
+        region = pml_wsi.slide.extract_region(
+            location=(0, 0),
+            size=(pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0])
+            )
 
-    region = pml_wsi.slide.extract_region(location=(0, 0), size=pml_wsi.slide.slide.level_dimensions[resolution_level], level=resolution_level)
-
-    print("extracted region.shape:", region.shape[0:1])
-
-    smaller_dim = min(region.shape[0:2])
-
-    region = region[0:smaller_dim, 0:smaller_dim]
-
-    print("removed unnecessary part (right half of img is displayed blank.. not sure why), new region shape:", region.shape)
+    # some tiff images (echino) had half of the image array blank so removing improves plotting 
+    # smaller_dim = min(region.shape[0:2])
+    # smallregion = region[0:smaller_dim, 0:smaller_dim]
+    # print("removed unnecessary part (right half of img is displayed blank.. not sure why), new region shape:", region.shape)
 
     random_x = np.random.randint(0, high=region.shape[0], size=10, dtype=int)
     random_y = np.random.randint(0, high=region.shape[1], size=10, dtype=int)
@@ -123,21 +136,6 @@ def show(wsi):
     axarr[0][1].set_title("Binary threshold Mask", fontsize = fontsize)
     axarr[0][1].imshow(tile.masks["binary_threshold"])
 
-    # do morphClose
-    MorphClose(
-        mask_name = "binary_threshold", 
-        kernel_size=ckernel,
-        n_iterations=citer
-    ).apply(tile)
-
-    # plot morphClose
-    axarr[1][0].set_title(f"MorphClose, kernel={ckernel}, n={citer}", fontsize = fontsize)
-    axarr[1][0].imshow(tile.masks["binary_threshold"])
-
-    for ax in axarr.ravel():
-        ax.set_yticks([])
-        ax.set_xticks([])
-
     # do morphOpen
     MorphOpen(
         mask_name = "binary_threshold", 
@@ -146,7 +144,18 @@ def show(wsi):
     ).apply(tile)
 
     # plot morphOpen
-    axarr[1][1].set_title(f"MorphOpen, kernel={okernel}, n={oiter}", fontsize = fontsize)
+    axarr[1][0].set_title(f"MorphOpen, kernel={okernel}, n={oiter}", fontsize = fontsize)
+    axarr[1][0].imshow(tile.masks["binary_threshold"])
+
+    # do morphClose
+    MorphClose(
+        mask_name = "binary_threshold", 
+        kernel_size=ckernel,
+        n_iterations=citer
+    ).apply(tile)
+
+    # plot morphClose
+    axarr[1][1].set_title(f"MorphClose, kernel={ckernel}, n={citer}", fontsize = fontsize)
     axarr[1][1].imshow(tile.masks["binary_threshold"])
 
     # do ForegroundDetection
@@ -163,8 +172,8 @@ def show(wsi):
 
     plt.show()
 
-wsi_paths = list(Path(wsi_folder).glob("*.tif"))
+wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
+random.shuffle(wsi_paths)
 for wsi in wsi_paths:
-    show(wsi)
-
-
+    transform_and_plot(wsi)
+    pass
