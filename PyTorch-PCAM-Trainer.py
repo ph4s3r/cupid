@@ -49,7 +49,11 @@ pcam_train_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="train"
 pcam_val_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="val", download=True)
 pcam_test_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="test", download=True)
 
-batch_size = 16
+print("pcam_train_dataset len: ", len(pcam_train_dataset))
+print("pcam_val_dataset len: ", len(pcam_val_dataset))
+print("pcam_test_dataset len: ", len(pcam_test_dataset))
+
+batch_size = 64
 
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
@@ -62,19 +66,18 @@ test_loader = torch.utils.data.DataLoader(
     pcam_test_dataset, batch_size=batch_size, shuffle=True, num_workers=0
 )
 
+# init model on the device
 ResNet = torch.hub.load(
     "pytorch/vision:v0.10.0", "resnet18", weights=resnet.ResNet18_Weights.IMAGENET1K_V1
 )
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
-
 model = ResNet.to(device)
 
 start_time = time.time()
 
 # hyper-params
-num_epochs = 1
+num_epochs = 42
 learning_rate = 0.001
 
 # loss and optimizer
@@ -90,8 +93,39 @@ def update_lr(optimizer, lr):
 total_step = len(train_loader)
 curr_lr = learning_rate
 
-learning_stats = {'train': [], 'val': []}
-learning_stats_phase = "train"
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0.001, verbose=False):
+
+        self.patience = patience
+        self.verbose = verbose
+        self.min_delta = min_delta
+        
+        self.epoch = 0
+        self.counter = 0
+        self.last_val_loss = 12350
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        self.epoch = self.epoch + 1
+        if self.last_val_loss - val_loss < self.min_delta:
+            self.counter +=1
+            if self.counter >= self.patience:  
+                self.early_stop = True
+        if self.verbose and self.epoch > 1:
+            print(f"Early stop checker: current validation loss: {val_loss}, last validation loss: {self.last_val_loss}, delta: {self.last_val_loss - val_loss}, min_delta: {self.min_delta}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
+        self.last_val_loss = val_loss
+        if self.early_stop:
+            print("Early stop condition reached, stopping training")
+            return True
+        else:
+            return False
+
+# early stop on val acc not decreasing for <patience> rounds with more than <min_delta>
+early_stop_val_loss = EarlyStopping(
+    min_delta=0.002,
+    patience=4,
+    verbose=True
+)
 
 for epoch in range(num_epochs):
 
@@ -184,16 +218,20 @@ for epoch in range(num_epochs):
         curr_lr /= 3
         update_lr(optimizer, curr_lr)
 
+    # check early stopping conditions, stop if necessary
+    if early_stop_val_loss(val_epoch_loss):
+      break
+
     # end of epoch run (identation!)
 
 # make sure that all pending events have been written to disk.
 writer.flush()
+writer.close()
 
 # save model checkpoint
 dtcomplete = time.strftime("%Y%m%d-%H%M%S")
 model_file = str(model_checkpoint_dir)+"\\"+"resnet18-"+dtcomplete+".ckpt"
 torch.save(model.state_dict(), model_file)
-writer.close()
 
 # test (can be run with testrunner as well later)
 lib.test_model(test_loader, model_file, 'cuda')
