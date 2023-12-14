@@ -1,6 +1,5 @@
 import matplotlib as plt
 import torch
-from torchvision.models import resnet18
 
 # plot a batch of tiles with masks
 def vizBatch(im, tile_masks, tile_labels = None):
@@ -27,9 +26,8 @@ def vizBatch(im, tile_masks, tile_labels = None):
     plt.tight_layout()
     plt.show()
 
-def test_model(test_loader, model_path, device):
+def test_model(test_loader, model_path, device, model):
 
-    model = resnet18()
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()

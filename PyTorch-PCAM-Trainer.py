@@ -20,8 +20,8 @@ import torch
 from pathlib import Path
 from coolname import generate_slug # ...
 from sklearn.metrics import precision_recall_fscore_support
-from torchvision.models import resnet
 from torchvision.datasets import PCAM
+from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 from torchvision.transforms import (
     v2,
@@ -36,12 +36,14 @@ result_path = Path("G:\\pcam\\training_results\\")
 result_path.mkdir(parents=True, exist_ok=True)
 
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some funny name)
-writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{generate_slug(2)}\\", comment="pcam_resnet")
+session_name = generate_slug(2)
+print("Starting session ", session_name)
+writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{session_name}\\", comment=session_name)
 
 transforms = v2.Compose(
     [
-        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
-        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
+        v2.ToImage(),
+        v2.ToDtype(torch.float32, scale=True),
     ]
 )
 
@@ -53,7 +55,7 @@ print("pcam_train_dataset len: ", len(pcam_train_dataset))
 print("pcam_val_dataset len: ", len(pcam_val_dataset))
 print("pcam_test_dataset len: ", len(pcam_test_dataset))
 
-batch_size = 64
+batch_size = 128
 
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
@@ -66,33 +68,40 @@ test_loader = torch.utils.data.DataLoader(
     pcam_test_dataset, batch_size=batch_size, shuffle=True, num_workers=0
 )
 
-# init model on the device
-ResNet = torch.hub.load(
-    "pytorch/vision:v0.10.0", "resnet18", weights=resnet.ResNet18_Weights.IMAGENET1K_V1
-)
+# se_resnet50 from torch hub
+SE_RESNET50 = torch.hub.load(
+    'moskomule/senet.pytorch',
+    'se_resnet50',
+    pretrained=True,
+    verbose=True
+    )
+
+num_ftrs = SE_RESNET50.fc.in_features
+SE_RESNET50.fc = torch.nn.Linear(num_ftrs, 2)
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
-model = ResNet.to(device)
+model = SE_RESNET50.to(device)
 
 start_time = time.time()
 
 # hyper-params
-num_epochs = 42
+num_epochs = 60
 learning_rate = 0.001
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+optimizer = torch.optim.SGD(params=model.parameters(), lr=0.6 / 1024 * batch_size, momentum=0.9, weight_decay=1e-4)
 
 # to update learning rate
-def update_lr(optimizer, lr):    
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+# scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
+scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
 
 # train
 total_step = len(train_loader)
 curr_lr = learning_rate
 
+# early stop class (val_loss)
 class EarlyStopping:
     def __init__(self, patience=5, min_delta=0.001, verbose=False):
 
@@ -112,7 +121,7 @@ class EarlyStopping:
             if self.counter >= self.patience:  
                 self.early_stop = True
         if self.verbose and self.epoch > 1:
-            print(f"Early stop checker: current validation loss: {val_loss}, last validation loss: {self.last_val_loss}, delta: {self.last_val_loss - val_loss}, min_delta: {self.min_delta}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
+            print(f"Early stop checker: current validation loss: {val_loss:.4f}, last validation loss: {self.last_val_loss:.4f}, delta: {(self.last_val_loss - val_loss):.4f}, min_delta: {self.min_delta:.4f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
         self.last_val_loss = val_loss
         if self.early_stop:
             print("Early stop condition reached, stopping training")
@@ -120,10 +129,10 @@ class EarlyStopping:
         else:
             return False
 
-# early stop on val acc not decreasing for <patience> rounds with more than <min_delta>
+# early stop on val loss not decreasing for <patience> rounds with more than <min_delta>
 early_stop_val_loss = EarlyStopping(
-    min_delta=0.002,
-    patience=4,
+    min_delta=0.001,
+    patience=15,
     verbose=True
 )
 
@@ -172,9 +181,11 @@ for epoch in range(num_epochs):
     writer.add_scalar('weighted_precision/train', precision, epoch)
     writer.add_scalar('weighted_recall/train', recall, epoch)
     writer.add_scalar('weighted_f1/train', f1_score, epoch)
+    latest_lr = torch.optim.lr_scheduler.MultiStepLR.get_last_lr(scheduler)[-1]
+    writer.add_scalar('learning_rate', latest_lr, epoch)
 
     # show stats at the end of epoch
-    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1_score:.4f}")
+    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1_score:.4f}, Last lr: {latest_lr:.4f}")
 
     # validation
     model.eval()
@@ -214,9 +225,7 @@ for epoch in range(num_epochs):
     print(f"Validation - Epoch {epoch+1}/{num_epochs} - Loss: {val_epoch_loss:.4f}, Acc: {val_epoch_acc:.4f}, Precision: {val_precision:.4f}, Recall: {val_recall:.4f}, F1: {val_f1_score:.4f}")
 
     # decay learning rate
-    if (epoch+1) % 20 == 0:
-        curr_lr /= 3
-        update_lr(optimizer, curr_lr)
+    scheduler.step()
 
     # check early stopping conditions, stop if necessary
     if early_stop_val_loss(val_epoch_loss):
@@ -230,8 +239,8 @@ writer.close()
 
 # save model checkpoint
 dtcomplete = time.strftime("%Y%m%d-%H%M%S")
-model_file = str(model_checkpoint_dir)+"\\"+"resnet18-"+dtcomplete+".ckpt"
+model_file = str(model_checkpoint_dir)+"\\"+session_name+dtcomplete+".ckpt"
 torch.save(model.state_dict(), model_file)
 
 # test (can be run with testrunner as well later)
-lib.test_model(test_loader, model_file, 'cuda')
+lib.test_model(test_loader, model_file, 'cuda', model)
