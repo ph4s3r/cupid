@@ -18,6 +18,7 @@ import lib
 import time
 import torch
 from pathlib import Path
+from coolname import generate_slug # ...
 from sklearn.metrics import precision_recall_fscore_support
 from torchvision.models import resnet
 from torchvision.datasets import PCAM
@@ -34,8 +35,8 @@ model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 result_path = Path("G:\\pcam\\training_results\\")
 result_path.mkdir(parents=True, exist_ok=True)
 
-# tensorboard summarywriter
-writer = SummaryWriter(log_dir="G:\\pcam\\tensorboard_data\\", comment="pcam_resnet")
+# instantiate tensorboard summarywriter (write the run's data into random subdir with some funny name)
+writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{generate_slug(2)}\\", comment="pcam_resnet")
 
 transforms = v2.Compose(
     [
