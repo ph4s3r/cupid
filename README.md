@@ -27,11 +27,10 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 # todos
 
 - run on Ubuntu
-- plot learning curve
+- https://pytorch.org/docs/stable/tensorboard.html learn how to push plts to tensorboard
 - visual inference + heatmap
 - albumentations (https://albumentations.ai/ & https://pathml.readthedocs.io/en/latest/examples/link_train_hovernet.html#Data-augmentation)
 - auc
-- test accuracy
 - feature extraction
 
 # notes
