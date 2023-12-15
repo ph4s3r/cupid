@@ -16,6 +16,10 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 - in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
 - **PyTorch-PCAM-Trainer**: test model training on a PCAM dataset
 
+### evaluation
+
+- **PyTorch-Evaluate**: set model type, saved weights, session name and test data to get accuracy, roc/auc graph, top false negative images and write data to tensorboard
+ 
 ## auxilliary functions
 
 - **pathML-Transforms**: tool to load a wsi and check how a set of transforms like binary threshold, morphopen, etc make the mask look like 
@@ -33,14 +37,15 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # todos
 
-- understand why do we still have a lot of empty tiles while masks seem to be covering tissues properly (need to revise pathml tissue-gen as well)
-- introduce some dynamic learning rate decay (fix epoch-count does not work)
-- run on Ubuntu
-- https://pytorch.org/docs/stable/tensorboard.html learn how to push plts to tensorboard, plot histograms, means stds, few images, masks etc...
 - visual inference + heatmap
-- albumentations (https://albumentations.ai/ & https://pathml.readthedocs.io/en/latest/examples/link_train_hovernet.html#Data-augmentation)
-- auc
 - feature extraction
+- add double logger
+- understand why do we still have a lot of empty tiles while masks seem to be covering tissues properly (need to revise pathml tissue-gen as well)
+- run on Ubuntu
+- augmentation: (https://albumentations.ai/ & https://pathml.readthedocs.io/en/latest/examples/link_train_hovernet.html#Data-augmentation) (does it know anything more or better than what we do now?) 
+- try a DSF-CNN instead of over-augmenting (rotation/flip-invariant network) https://paperswithcode.com/paper/dense-steerable-filter-cnns-for-exploiting
+- DSF-CNN implementation: https://github.com/simongraham/dsf-cnn
+- also try P4M-DenseNet which performed best on PCAM (2018) https://arxiv.org/abs/1806.03962
 
 # notes
 

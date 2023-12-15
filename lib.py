@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
+from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 
 # plot a batch of tiles with masks
 def vizBatch(im, tile_masks, tile_labels = None):
@@ -28,7 +29,11 @@ def vizBatch(im, tile_masks, tile_labels = None):
     plt.tight_layout()
     plt.show()
 
-def test_model(test_loader, model_path, device, model):
+def test_model(test_loader, model_path, device, model, session_name = None) -> dict():
+
+    writer = None
+    if session_name is not None:
+        writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{session_name}\\", comment="test-results")
 
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
@@ -55,7 +60,17 @@ def test_model(test_loader, model_path, device, model):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
+    accuracy = 100 * correct / total
     print('Accuracy: {:.2f}%'.format(100 * correct / total))
+    writer.add_text("Accuracy", str(accuracy), global_step=None, walltime=None)
+
+    false_negatives = {}
+
+    for i, positive_index in enumerate(true_labels):
+        if positive_index == 1 and predictions[i] < 0.3:
+            false_negatives[predictions[i]] = i # dict with keys as the prediction scores and values as indexes of images (sorting is easy) 
+
+    worst_fns = sorted(false_negatives.items(), key=lambda item: item[0])
 
     fpr, tpr, thresholds = roc_curve(true_labels, predictions)
     roc_auc = auc(fpr, tpr)
@@ -92,3 +107,9 @@ def test_model(test_loader, model_path, device, model):
     ax.legend(['ROC curve (area = {:.2f})'.format(roc_auc)], loc="lower right")
 
     plt.show()
+    writer.add_figure("ROC/AUC fig", fig, global_step=None, close=True, walltime=None)
+    
+    writer.add_graph(model, images)
+    writer.close()
+
+    return worst_fns
