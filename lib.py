@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 
@@ -56,19 +57,38 @@ def test_model(test_loader, model_path, device, model):
 
     print('Accuracy: {:.2f}%'.format(100 * correct / total))
 
-    fpr, tpr, _ = roc_curve(true_labels, predictions)
+    fpr, tpr, thresholds = roc_curve(true_labels, predictions)
     roc_auc = auc(fpr, tpr)
 
-    # plot roc / auc
-    plt.figure()
-    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
-    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic')
-    plt.legend(loc="lower right")
-    plt.show()
+    # Ensure thresholds are within the expected range
+    thresholds = np.clip(thresholds, 0, 1)
 
-    
+    # Normalize the threshold values
+    norm = plt.Normalize(vmin=thresholds.min(), vmax=thresholds.max())
+    cmap = plt.cm.viridis
+
+    # Create figure and axis
+    fig, ax = plt.subplots()
+
+    # Plot each segment of the ROC curve with color mapping to the thresholds
+    for i in range(len(fpr) - 1):
+        color = cmap(norm(thresholds[i]))
+        ax.plot(fpr[i:i+2], tpr[i:i+2], color=color, lw=2)
+
+    # Adding the colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # Important to ensure the colorbar works with our custom colors
+    fig.colorbar(sm, ax=ax, label='Threshold')
+
+    # Plotting the diagonal line for random chance
+    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+
+    # Customize the plot
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_title('Receiver Operating Characteristic with Thresholds')
+    ax.legend(['ROC curve (area = {:.2f})'.format(roc_auc)], loc="lower right")
+
+    plt.show()
