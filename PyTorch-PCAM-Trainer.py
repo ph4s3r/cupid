@@ -227,6 +227,11 @@ for epoch in range(num_epochs):
     # decay learning rate
     scheduler.step()
 
+    # save model checkpoint (epoch)
+    if epoch > 2:
+    model_file = str(model_checkpoint_dir)+"\\"+session_name+str(epoch)+".ckpt"
+    torch.save(model.state_dict(), model_file)
+
     # check early stopping conditions, stop if necessary
     if early_stop_val_loss(val_epoch_loss):
       break
