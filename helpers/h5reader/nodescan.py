@@ -3,10 +3,11 @@
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+from pprint import pprint
 
-folder = 'G:\\echinov3\\h5-bad-annotation\\'
+folder = 'G:\\placenta\\h5\\'
 
-file = "echino41.tif.h5path"
+file = "20230810_140324.tif.h5path"
 
 h5file = h5py.File(folder+file, 'r')
 
@@ -25,4 +26,8 @@ def scan_hdf5(f, recursive=True, tab_step=2):
 
 sanyi = scan_hdf5(h5file, recursive=True, tab_step=2)
 
-print(sanyi)
+
+
+print(len(sanyi[0]))
+pprint(sanyi)
+pass

@@ -13,22 +13,28 @@ import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 import helpers.ds_means_stds
+import lib
 # pip
 import time
+import numpy as np
 import torch
 import pathml
-import matplotlib.pyplot as plt
 from pathlib import Path
+import matplotlib.pyplot as plt
+from sklearn.metrics import precision_recall_fscore_support
 from torchvision.models import resnet
 from torchvision.transforms import (
     v2,
 )  # v2 is the newest: https://pytorch.org/vision/stable/transforms.html
 
 # set h5path directory
-h5folder = Path("G:\\echinov2\\h5\\")
+h5folder = Path("G:\\placenta\\h5\\")
 h5files = list(h5folder.glob("*.h5path"))
-model_checkpoint_dir = Path("G:\\echino\\training_checkpoints\\")
+model_checkpoint_dir = Path("G:\\placenta\\training_checkpoints\\")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+result_path = Path("G:\\placenta\\training_results\\")
+result_path.mkdir(parents=True, exist_ok=True)
+
 
 # tile transformations based on resnet18 requirements (https://pytorch.org/hub/pytorch_vision_resnet/) it needs:
 # - (3,h,w) shape
@@ -41,12 +47,12 @@ transforms = v2.Compose(
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
-        # v2.Normalize(                                         # after getting the values, re-run
-        #     mean=[0.485, 0.456, 0.406],
-        #     std=[0.229, 0.224, 0.225]
-        # ),
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.Resize(size=(256, 256), antialias=True)              # anything between 224 and 500 should work
+        # v2.Normalize(                                         # problem is that images are mostly white. need to calc mean and stds of usable pixels only
+        #     mean=[.0, .0, .0],
+        #     std=[1., 1., 1.]
+        # ),
+        # v2.Resize(size=(256, 256), antialias=False)             # resnet in its base form works best with 224/256, senet however works well with 500 
     ]
 )
 
@@ -56,8 +62,8 @@ maskforms = v2.Compose(
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.Lambda(lambda x: torch.where(x > 0, 1, 0.)),         # step function
-        v2.Resize(size=(256, 256), antialias=False)             # anything between 224 and 500 should work
+        # v2.Lambda(lambda x: torch.where(x > 0, 1, 0.)),         # step function (for non binary masks..)
+        # v2.Resize(size=(256, 256), antialias=False)             # don't forget to resize to the size of tiles
     ]
 )
 
@@ -68,6 +74,14 @@ class TransformedPathmlTileSet(pathml.ml.TileDataset):
         tile_image = transforms(tile_image)
         tile_masks = maskforms(tile_masks)
 
+        if int(tile_masks.sum(dtype=torch.uint8)) >= 64:  # only return im where at least one fourth of it is usable
+            return None
+        # 2: return a tile_label!
+
+        # black pixels uot not covered by their mask
+        # masked_tile_image = torch.mul(tile_image,tile_masks)
+
+        # print(masked_tile_image)
         return (tile_image, tile_masks, tile_labels, slide_labels)
 
 datasets = []
@@ -76,9 +90,11 @@ for h5file in h5files:
 
 full_ds = torch.utils.data.ConcatDataset(datasets)
 
+fullsize = sum(full_ds.cumulative_sizes)
+
 # determine global means and stds for the full dataset (reads ~5GB/min)
 # mean, std = helpers.ds_means_stds.mean_stds(full_ds)
-# if done, just write it back to v2.Normalize() and run again
+# if done, just write it back to v2.Normalize() and run agains
 
 # (optional) with fixed generator for reproducible split results (https://pytorch.org/docs/stable/data.html#torch.utils.data.random_split)
 generator = torch.Generator().manual_seed(42)
@@ -87,7 +103,7 @@ train_cases, val_cases, test_cases = torch.utils.data.random_split(
     full_ds, [0.7, 0.2, 0.1], generator=generator
 )
 
-batch_size = 16
+batch_size = 1
 
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
@@ -100,33 +116,25 @@ test_loader = torch.utils.data.DataLoader(
     test_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
 
-# plot a batch of tiles with masks
-def vizBatch(im, tile_labels, tile_masks):
-    # create a grid of subplots
-    _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
-    axes = axes.flatten()
-
-    for i in range(8):  # Display only the first 8 tiles, duplicated
-        img = im[i].permute(1, 2, 0).numpy()
-        mask = tile_masks[i].permute(1, 2, 0).numpy()
-
-        # Display image without mask
-        axes[2*i].imshow(img)
-        axes[2*i].axis("off")
-        label = ", ".join([f"{v[i]}" for _, v in tile_labels.items()])
-        axes[2*i].text(3, 10, label, color="white", fontsize=6, backgroundcolor="black")
-
-        # Display image with mask overlay
-        axes[2*i + 1].imshow(img)
-        axes[2*i + 1].imshow(mask, alpha=1, cmap='terrain')  # adjust alpha as needed
-        axes[2*i + 1].axis("off")
-
-    plt.tight_layout()
-    plt.show()
-
 # get a batch of transformed training data just to visualize
-images, tile_masks, tile_labels, slide_labels = next(iter(train_loader))
-vizBatch(images, tile_labels, tile_masks)
+maskz = list()
+zeromaskz = 0
+for i in range(fullsize):
+    _, _, tile_labels, _ = next(iter(train_loader))
+    if tile_labels == 0:
+        zeromaskz += 1
+    else:
+        maskz.append(tile_labels)
+
+avg = sum(maskz) / len(maskz) 
+print("fullsize:", fullsize)
+print("nonzero masks:", len(maskz))
+print("zero masks:", zeromaskz)
+print("AVG:", int(avg))
+
+images = tile_masks = None
+
+lib.vizBatch(images, tile_masks, tile_labels)
 
 # elnezest
 label_mapping = {classname: i for i, classname in enumerate(set(slide_labels.get('class')))}
@@ -166,7 +174,17 @@ def update_lr(optimizer, lr):
 total_step = len(train_loader)
 curr_lr = learning_rate
 
+learning_stats = {'train': [], 'val': []}
+learning_stats_phase = "train"
+
 for epoch in range(num_epochs):
+
+    total_loss = 0
+    total_correct = 0
+    total = 0
+    all_labels = []
+    all_predictions = []
+
     for i, (images, tile_masks, tile_labels, slide_labels) in enumerate(train_loader):
         images = images.to(device)
         
@@ -181,11 +199,34 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        total_loss += loss.item()
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        total_correct += (predicted == labels).sum().item()
+        all_labels.extend(labels.cpu().numpy())
+        all_predictions.extend(predicted.cpu().numpy())
         
         if (i+1) % 100 == 0:
             time_elapsed = time.time() - start_time
             print ("Epoch [{}/{}], Step [{}/{}] Loss: {:.4f} in {:.0f}m {:.0f}s"
                    .format(epoch+1, num_epochs, i+1, total_step, loss.item(), time_elapsed // 60, time_elapsed % 60))
+    
+    epoch_loss = total_loss / total_step
+    epoch_acc = total_correct / total
+    precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
+
+    # save epoch learning stats
+    learning_stats[learning_stats_phase].append({
+        'loss': epoch_loss, 
+        'accuracy': epoch_acc, 
+        'weighted_precision': precision,
+        'weighted_recall': recall,
+        'weighted_f1': f1_score
+    })
+
+    # show stats at the end of epoch
+    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1_score:.4f}")
 
     # decay learning rate
     if (epoch+1) % 20 == 0:
@@ -212,3 +253,5 @@ with torch.no_grad():
 dtcomplete = time.strftime("%Y%m%d-%H%M%S")
 torch.save(model.state_dict(), str(model_checkpoint_dir)+"\\"+"resnet18-"+dtcomplete+".ckpt")
 pass
+
+lib.plotLearningCurve(learning_stats, result_path)

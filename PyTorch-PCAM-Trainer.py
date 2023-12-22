@@ -40,17 +40,35 @@ session_name = generate_slug(2)
 print("Starting session ", session_name)
 writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{session_name}\\", comment=session_name)
 
-transforms = v2.Compose(
+t_ToTensor = v2.Compose(
     [
         v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
+        v2.ToDtype(torch.float32, scale=True)
     ]
 )
 
-pcam_train_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="train", download=True)
-pcam_val_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="val", download=True)
-pcam_test_dataset = PCAM(root="G:\\pcam\\", transform=transforms, split="test", download=True)
+t_AUG = v2.Compose(
+    [
+        v2.ToImage(),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.RandomApply(
+            transforms=[
+                v2.RandomResizedCrop(size=96, antialias=True), 
+                v2.RandomRotation(degrees=(0, 359)), 
+                v2.ColorJitter(brightness=.5, hue=.3, saturation=.8, contrast=.5)
+            ]
+        , p=1)  
+    ]
+)
 
+pcam_train_ds_normal = PCAM(root="G:\\pcam\\", transform=t_ToTensor, split="train", download=True)
+pcam_train_ds_aug = PCAM(root="G:\\pcam\\", transform=t_AUG, split="train", download=True)
+pcam_train_dataset = pcam_train_ds_normal + pcam_train_ds_aug
+pcam_val_dataset = PCAM(root="G:\\pcam\\", transform=t_ToTensor, split="val", download=True)
+pcam_test_dataset = PCAM(root="G:\\pcam\\", transform=t_ToTensor, split="test", download=True)
+
+print("pcam_train_ds_normal len: ", len(pcam_train_ds_normal))
+print("pcam_train_ds_aug len: ", len(pcam_train_ds_aug))
 print("pcam_train_dataset len: ", len(pcam_train_dataset))
 print("pcam_val_dataset len: ", len(pcam_val_dataset))
 print("pcam_test_dataset len: ", len(pcam_test_dataset))
@@ -86,7 +104,7 @@ model = SE_RESNET50.to(device)
 start_time = time.time()
 
 # hyper-params
-num_epochs = 60
+num_epochs = 80
 learning_rate = 0.001
 
 # loss and optimizer
@@ -103,11 +121,12 @@ curr_lr = learning_rate
 
 # early stop class (val_loss)
 class EarlyStopping:
-    def __init__(self, patience=5, min_delta=0.001, verbose=False):
+    def __init__(self, patience=5, min_delta=0.001, verbose=False, consecutive=False):
 
         self.patience = patience
         self.verbose = verbose
         self.min_delta = min_delta
+        self.consecutive = consecutive
         
         self.epoch = 0
         self.counter = 0
@@ -120,6 +139,9 @@ class EarlyStopping:
             self.counter +=1
             if self.counter >= self.patience:  
                 self.early_stop = True
+        else:
+            if self.consecutive:    # stopping only on consecutive <patience> number of degradation epochs
+                self.counter = 0 
         if self.verbose and self.epoch > 1:
             print(f"Early stop checker: current validation loss: {val_loss:.4f}, last validation loss: {self.last_val_loss:.4f}, delta: {(self.last_val_loss - val_loss):.4f}, min_delta: {self.min_delta:.4f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
         self.last_val_loss = val_loss
@@ -132,8 +154,9 @@ class EarlyStopping:
 # early stop on val loss not decreasing for <patience> rounds with more than <min_delta>
 early_stop_val_loss = EarlyStopping(
     min_delta=0.001,
-    patience=15,
-    verbose=True
+    patience=10,
+    verbose=True,
+    consecutive=False
 )
 
 for epoch in range(num_epochs):
@@ -167,9 +190,9 @@ for epoch in range(num_epochs):
         
         if (i+1) % 100 == 0:
             time_elapsed = time.time() - start_time
-            print ("Epoch [{}/{}], Step [{}/{}] Loss: {:.4f} in {:.0f}m {:.0f}s"
+            print ("Training   - Epoch [{}/{}], Step [{}/{}] Loss: {:.4f} in {:.0f}m {:.0f}s"
                    .format(epoch+1, num_epochs, i+1, total_step, loss.item(), time_elapsed // 60, time_elapsed % 60))
-    
+
     epoch_loss = total_loss / total_step
     epoch_acc = total_correct / total
     # https://scikit-learn.org/0.15/modules/generated/sklearn.metrics.precision_recall_fscore_support.html
@@ -229,8 +252,8 @@ for epoch in range(num_epochs):
 
     # save model checkpoint (epoch)
     if epoch > 2:
-    model_file = str(model_checkpoint_dir)+"\\"+session_name+str(epoch)+".ckpt"
-    torch.save(model.state_dict(), model_file)
+        model_file = str(model_checkpoint_dir)+"\\"+session_name+str(epoch)+".ckpt"
+        torch.save(model.state_dict(), model_file)
 
     # check early stopping conditions, stop if necessary
     if early_stop_val_loss(val_epoch_loss):
@@ -242,7 +265,7 @@ for epoch in range(num_epochs):
 writer.flush()
 writer.close()
 
-# save model checkpoint
+# save model checkpoint (final)
 dtcomplete = time.strftime("%Y%m%d-%H%M%S")
 model_file = str(model_checkpoint_dir)+"\\"+session_name+dtcomplete+".ckpt"
 torch.save(model.state_dict(), model_file)
