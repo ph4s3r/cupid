@@ -56,6 +56,7 @@ from pathml.preprocessing import (
     BinaryThreshold,
     MorphClose,
     MorphOpen,
+    TissueDetectionHE
 )
 import matplotlib.pyplot as plt
 from pathml.core import HESlide, Tile, types
@@ -72,6 +73,7 @@ def transform_and_plot(wsi):
     print("some details of ", pml_wsi.name)
     print("shape: ", pml_wsi.shape)
     print("level_count: ", pml_wsi.slide.level_count)
+    print("level_downsamples (from 0 index to n): ", pml_wsi.slide.slide.level_downsamples)
     print("level_dimensions (h,w): ", pml_wsi.slide.slide.level_dimensions)
     try:
         print("color profile: ", pml_wsi.slide.slide.color_profile.profile.profile_description)
@@ -83,16 +85,16 @@ def transform_and_plot(wsi):
     print("labels: ", pml_wsi.labels)
 
     try:
-        resolution_level = 6   # smaller level = bigger image
-        print("Working with pyramid resolution level", resolution_level, "shape:", region.shape[0:1])
+        resolution_level = 4   # 0 is the highest resolution, need to use the index of level_downsamples
         # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
         region = pml_wsi.slide.extract_region(
             location=(0, 0),
             size=(pml_wsi.slide.slide.level_dimensions[resolution_level][1], pml_wsi.slide.slide.level_dimensions[resolution_level][0]),
             level=resolution_level
             )
-    except:
-        print("Resolution level not found, using original size")
+        print("Working with pyramid resolution level", resolution_level, "shape:", region.shape[0:1])
+    except Exception as e:
+        print("Resolution level not found, using original size. Error: ", e)
         # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
         region = pml_wsi.slide.extract_region(
             location=(0, 0),
