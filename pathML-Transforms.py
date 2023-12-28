@@ -9,6 +9,14 @@
 # Output: matplotlib plots dislpayed, nothing saved                                                      #
 ##########################################################################################################
 
+############################################
+# mask data structure:                     #
+# two values in a numpy.ndarray: 0 and 127 #
+# (dtype: uint8)                           #
+# 127 is obviously the mask                #
+############################################
+
+
 
 #########
 # usage #
@@ -85,7 +93,7 @@ def transform_and_plot(wsi):
     print("labels: ", pml_wsi.labels)
 
     try:
-        resolution_level = 4   # 0 is the highest resolution, need to use the index of level_downsamples
+        resolution_level = 9   # 0 is the highest resolution, need to use the index of level_downsamples
         # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
         region = pml_wsi.slide.extract_region(
             location=(0, 0),
@@ -122,50 +130,65 @@ def transform_and_plot(wsi):
 
     _, axarr = plt.subplots(nrows=2, ncols=3)
 
+
+    ###########################################################
+
+    
+
+
     # plot original image
     axarr[0][0].set_title(wsi.name, fontsize = fontsize)
     axarr[0][0].imshow(tile.image)
 
-    # do binary threshold
-    BinaryThreshold(
-        mask_name="binary_threshold",
-        use_otsu=bt_otsu,
-        threshold=bt_threshold,
-        inverse=bt_inverse
+    # do TissueDetectionHE
+    TissueDetectionHE(
+        mask_name = "tissue", 
+        min_region_size=500,
+        threshold=30, 
+        outer_contours_only=True
     ).apply(tile)
 
-    # plot bin threshold
+    # plot bin TissueDetectionHE
     axarr[0][1].set_title("Binary threshold Mask", fontsize = fontsize)
-    axarr[0][1].imshow(tile.masks["binary_threshold"])
+    axarr[0][1].imshow(tile.masks["tissue"])
 
-    # do morphOpen
-    MorphOpen(
-        mask_name = "binary_threshold", 
-        kernel_size=okernel,
-        n_iterations=oiter
-    ).apply(tile)
+    print("dtype:",tile.masks["tissue"].dtype)
+    print("min:", tile.masks["tissue"].min())
+    print("max:",tile.masks["tissue"].max())
+    print("shape:", tile.masks["tissue"].shape)
+    print("uniq:",np.unique(tile.masks["tissue"]))
+    np.set_printoptions(threshold=np.inf)
+
+    print(tile.masks["tissue"][20:30, 20:30])
+
+    # # do morphOpen
+    # MorphOpen(
+    #     mask_name = "tissue", 
+    #     kernel_size=okernel,
+    #     n_iterations=oiter
+    # ).apply(tile)
 
     # plot morphOpen
     axarr[1][0].set_title(f"MorphOpen, kernel={okernel}, n={oiter}", fontsize = fontsize)
-    axarr[1][0].imshow(tile.masks["binary_threshold"])
+    axarr[1][0].imshow(tile.masks["tissue"])
 
-    # do morphClose
-    MorphClose(
-        mask_name = "binary_threshold", 
-        kernel_size=ckernel,
-        n_iterations=citer
-    ).apply(tile)
+    # # do morphClose
+    # MorphClose(
+    #     mask_name = "tissue", 
+    #     kernel_size=ckernel,
+    #     n_iterations=citer
+    # ).apply(tile)
 
     # plot morphClose
     axarr[1][1].set_title(f"MorphClose, kernel={ckernel}, n={citer}", fontsize = fontsize)
-    axarr[1][1].imshow(tile.masks["binary_threshold"])
+    axarr[1][1].imshow(tile.masks["tissue"])
 
-    # do ForegroundDetection
-    ForegroundDetection(mask_name="binary_threshold", min_region_size=fgd_min_region_size, max_hole_size=fgd_max_hole_size, outer_contours_only=False).apply(tile)
+    # # do ForegroundDetection
+    # ForegroundDetection(mask_name="tissue", min_region_size=fgd_min_region_size, max_hole_size=fgd_max_hole_size, outer_contours_only=False).apply(tile)
 
     # plot ForegroundDetection
     axarr[1][2].set_title(f"ForegroundDetection", fontsize = fontsize)
-    axarr[1][2].imshow(tile.masks["binary_threshold"])
+    axarr[1][2].imshow(tile.masks["tissue"])
 
     # conclude plotting
     for ax in axarr.ravel():
@@ -178,4 +201,5 @@ wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 random.shuffle(wsi_paths)
 for wsi in wsi_paths:
     transform_and_plot(wsi)
-    pass
+
+pass
