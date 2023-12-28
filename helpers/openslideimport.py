@@ -12,4 +12,5 @@ else:
 if "openslide" not in sys.modules:
     print("OpenSlide import failed!")
 else:
-    print("OpenSlide imported successfully")
+    pass
+    #print("OpenSlide imported successfully")
