@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
+import os
+import torch
+from torchvision.utils import save_image
 
 # plot a batch of tiles with masks
 def vizBatch(im, tile_masks, tile_labels = None):
@@ -10,7 +13,7 @@ def vizBatch(im, tile_masks, tile_labels = None):
     _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
     axes = axes.flatten()
 
-    for i in range(8):  # Display only the first 8 tiles, duplicated
+    for i in range(8):  # Display only the first batch_size tiles, duplicated
         img = im[i].permute(1, 2, 0).numpy()
         mask = tile_masks[i].permute(1, 2, 0).numpy()
 
@@ -19,11 +22,13 @@ def vizBatch(im, tile_masks, tile_labels = None):
         axes[2*i].axis("off")
         if tile_labels is not None:
             label = ", ".join([f"{v[i]}" for _, v in tile_labels.items()])
+        else:
+            label = ""
         axes[2*i].text(3, 10, label, color="white", fontsize=6, backgroundcolor="black")
 
         # Display image with mask overlay
         axes[2*i + 1].imshow(img)
-        axes[2*i + 1].imshow(mask, alpha=1, cmap='terrain')  # adjust alpha as needed
+        axes[2*i + 1].imshow(mask, alpha=0.5, cmap='terrain')  # adjust alpha as needed
         axes[2*i + 1].axis("off")
 
     plt.tight_layout()
@@ -113,3 +118,30 @@ def test_model(test_loader, model_path, device, model, session_name = None) -> d
     writer.close()
 
     return worst_fns
+
+def save_tiles(dataloaders, save_dir):
+    """
+    Save tiles from multiple DataLoaders as PNG images.
+
+    Args:
+    dataloaders (list of DataLoader): List of DataLoaders to process.
+    save_dir (str): Directory path where images will be saved.
+
+    Returns:
+    None
+    """
+
+    for loader in dataloaders:
+        for batch in loader:
+            images, _, tile_labels, _ = batch  # Adjust if your dataloader structure is different
+
+            tile_keys = tile_labels['tile_key']
+            source_file = tile_labels['source_file']
+
+            for im, key, sf in zip(images, tile_keys, source_file):
+                # Construct filename using 'source_file' and 'tile_key'
+                filename = f"{sf}_{key}.png"
+                file_path = os.path.join(save_dir, filename)
+
+                # Convert the tensor to an image and save
+                save_image(im, file_path)
