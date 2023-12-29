@@ -136,7 +136,7 @@ def save_tiles(dataloaders, save_dir):
             images, _, tile_labels, _ = batch  # Adjust if your dataloader structure is different
 
             tile_keys = tile_labels['tile_key']
-            source_file = tile_labels['source_file']
+            source_file = tile_labels['wsi_name']
 
             for im, key, sf in zip(images, tile_keys, source_file):
                 # Construct filename using 'source_file' and 'tile_key'
