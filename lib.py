@@ -158,12 +158,15 @@ def save_tiles(dataloaders, save_dir):
             images, _, tile_labels, _ = batch  # Adjust if your dataloader structure is different
 
             tile_keys = tile_labels['tile_key']
-            source_file = tile_labels['wsi_name']
+            classes = tile_labels['class']
+            wsi_name = tile_labels['wsi_name']
 
-            for im, key, sf in zip(images, tile_keys, source_file):
+            for im, key, cl, name in zip(images, tile_keys, classes, wsi_name):
                 # Construct filename using 'source_file' and 'tile_key'
-                filename = f"{sf}_{key}.png"
-                file_path = os.path.join(save_dir, filename)
-
-                # Convert the tensor to an image and save
-                save_image(im, file_path)
+                filename = f"{key}cl{cl}.png".replace("(", "").replace(")", "_").replace(",", "_").replace(" ", "")
+                try:
+                    save_image(im, os.path.join(save_dir, name, filename))
+                except FileNotFoundError: # need to create tile subdir
+                    Path(os.path.join(save_dir, name)).mkdir(parents=True, exist_ok=True)
+                    save_image(im, os.path.join(save_dir, name, filename))
+                
