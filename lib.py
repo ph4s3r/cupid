@@ -5,7 +5,29 @@ from sklearn.metrics import roc_curve, auc
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 import os
 import torch
+from pathlib import Path
 from torchvision.utils import save_image
+
+def human_readable_size(size, decimal_places=2):
+    """Convert a size in bytes to a human-readable format."""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024.0 or unit == "TB":
+            break
+        size /= 1024.0
+    return f"{size:.{decimal_places}f} {unit}"
+
+def print_file_sizes(directory):
+    """List files and their sizes in a directory."""
+    p = Path(directory)
+    print("file sizes in directory", p)
+    if not p.is_dir():
+        return "Provided path is not a directory"
+
+    for file in p.glob('*'):
+        if file.is_file():
+            size = file.stat().st_size
+            print(file.name, human_readable_size(size))
+
 
 # plot a batch of tiles with masks
 def vizBatch(im, tile_masks, tile_labels = None):
