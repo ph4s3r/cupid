@@ -60,10 +60,6 @@ import random
 import numpy as np
 from pathlib import Path
 from pathml.preprocessing import (
-    ForegroundDetection,
-    BinaryThreshold,
-    MorphClose,
-    MorphOpen,
     TissueDetectionHE
 )
 import matplotlib.pyplot as plt
@@ -72,7 +68,12 @@ from pathml.core import HESlide, Tile, types
 
 fontsize = 8
 
-def transform_and_plot(wsi):
+# debugging random empty spaces covered by mask
+coords = [(0, 1000), (0, 3000)]
+rect_size = (500, 500) # width, height of the rectangles
+
+# 0 is the highest resolution, need to use the index of level_downsamples
+def transform_and_plot(wsi, resolution_level):
     pml_wsi = HESlide(
         wsi,
         backend="openslide",
@@ -94,7 +95,6 @@ def transform_and_plot(wsi):
     print("labels: ", pml_wsi.labels)
 
     try:
-        resolution_level = 3   # 0 is the highest resolution, need to use the index of level_downsamples
         # dimensions are transposed!!! needed to invert.. (pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0]))
         region = pml_wsi.slide.extract_region(
             location=(0, 0),
@@ -134,20 +134,27 @@ def transform_and_plot(wsi):
     # do TissueDetectionHE
     TissueDetectionHE(
         mask_name = "tissue", 
-        min_region_size=500,
-        threshold=30, 
-        outer_contours_only=True
+        threshold = 19,
+        min_region_size=1000,
+        outer_contours_only=False,
+        max_hole_size = 10000,
+        use_saturation=True
     ).apply(tile)
 
-    fig, ax = plt.subplots(figsize=(7, 7))
+    _, ax = plt.subplots(figsize=(8, 8))
     plot_mask(im = tile.image, mask_in=tile.masks["tissue"], ax = ax)
-    plt.title("Overlay", fontsize = fontsize)
+
+    for x, y in coords:
+            rect = plt.Rectangle((y, x), rect_size[1], rect_size[0], linewidth=1, edgecolor='black', facecolor='none')
+            ax.add_patch(rect)
+
+    plt.title("Overlay with suspicious tileboxes", fontsize = fontsize)
     plt.axis('off')
     plt.show()
 
-wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
-random.shuffle(wsi_paths)
+wsi_paths = list(Path(wsi_folder).glob("*.tif*")) ; random.shuffle(wsi_paths)
+
 for wsi in wsi_paths:
-    transform_and_plot(wsi)
+    transform_and_plot(wsi, resolution_level=2)
 
 pass
