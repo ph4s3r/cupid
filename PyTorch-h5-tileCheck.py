@@ -44,6 +44,13 @@ transforms = v2.Compose(
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
+        v2.RandomApply(
+            transforms=[
+                v2.RandomRotation(degrees=(0, 359)),
+                v2.ColorJitter(brightness=.3, hue=.2, saturation=.2, contrast=.3)
+            ]
+        , p=0.5),
+        v2.Resize(size=256, antialias=False),                   # same size as the tile im
     ]
 )
 
@@ -52,20 +59,23 @@ maskforms = v2.Compose(
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
-        v2.ToDtype(torch.uint8)                                 # float to int
+        v2.ToDtype(torch.uint8),                                # float to int
+        v2.Resize(size=256, antialias=False)                    # same size as the tile im
     ]
 )
 
 class TransformedPathmlTileSet(pathml.ml.TileDataset):
     def __init__(self, h5file):
         super().__init__(h5file)
+        self.dimx = self.tile_shape[0]
+        self.dimy = self.tile_shape[1]
         self.usable_indices = self._find_usable_tiles()
-        self.file_label = Path(self.file_path).stem  # Extract the filename without extension
+        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
 
     def _find_usable_tiles(self):
         usable_indices = []
-        threshold_percent = 0.4
-        threshold_val = int(500 * 500 * threshold_percent)
+        threshold_percent = 0.35
+        threshold_val = int(self.dimx * self.dimy * threshold_percent)
         initial_length = super().__len__()
 
         for idx in range(initial_length):
