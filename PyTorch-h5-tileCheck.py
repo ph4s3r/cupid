@@ -12,7 +12,7 @@ import os
 # local files
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
-import helpers.ds_means_stds
+# import helpers.ds_means_stds
 import lib
 # pip
 import numpy as np
@@ -25,16 +25,16 @@ from torchvision.transforms import (
 )
 
 # set h5path directory
-h5folder = Path("G:\\placenta\\h5\\")
+h5folder = Path("/mnt/bigdata/placenta/h5")
 h5files = list(h5folder.glob("*.h5path"))
 # set model checkpoint directory
-model_checkpoint_dir = Path("G:\\placenta\\training_checkpoints\\")
+model_checkpoint_dir = Path("/mnt/bigdata/placenta/training_checkpoints/")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 # set training results directory
-result_path = Path("G:\\placenta\\training_results\\")
+result_path = Path("/mnt/bigdata/placenta/training_results/")
 result_path.mkdir(parents=True, exist_ok=True)
 # set tiles directory
-tile_dir = Path("G:\\placenta\\tiles\\")
+tile_dir = Path("/mnt/bigdata/placenta/tiles/")
 tile_dir.mkdir(parents=True, exist_ok=True)
 
 # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
