@@ -150,7 +150,7 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 64 # larger batch is faster!
+batch_size = 16 # larger batch is faster!
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
 train_cases, val_cases, test_cases = torch.utils.data.random_split( # split to 70% train, 20% val & 10% test
@@ -366,8 +366,8 @@ writer.close()
 
 # save model checkpoint (final)
 dtcomplete = time.strftime("%Y%m%d-%H%M%S")
-model_file = str(model_checkpoint_dir)+"\\"+session_name+dtcomplete+".ckpt"
+model_file = str(model_checkpoint_dir)+"/"+session_name+dtcomplete+".ckpt"
 torch.save(model.state_dict(), model_file)
 
 # test (can be run with testrunner as well later)
-lib.test_model(test_loader, model_file, 'cuda', model)
+lib.test_model(test_loader, model_file, 'cuda', model, tensorboard_log_dir, session_name=session_name)

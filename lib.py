@@ -56,11 +56,12 @@ def vizBatch(im, tile_masks, tile_labels = None):
     plt.tight_layout()
     plt.show()
 
-def test_model(test_loader, model_path, device, model, session_name = None) -> dict():
+def test_model(test_loader, model_path, device, model, tensorboard_log_dir, session_name = None) -> dict():
 
     writer = None
+
     if session_name is not None:
-        writer = SummaryWriter(log_dir=f"G:\\pcam\\tensorboard_data\\{session_name}\\", comment="test-results")
+        writer = SummaryWriter(log_dir=tensorboard_log_dir, comment="test-results")
 
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
@@ -74,9 +75,9 @@ def test_model(test_loader, model_path, device, model, session_name = None) -> d
     total = 0
     
     with torch.no_grad():
-        for images, labels in test_loader:
+        for images, _, labels_dict, _ in test_loader:
             images = images.to(device)
-            labels = labels.to(device)
+            labels = labels_dict['class'].to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             outputs.shape
