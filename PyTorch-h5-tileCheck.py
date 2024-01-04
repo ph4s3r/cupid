@@ -50,7 +50,7 @@ transforms = v2.Compose(
                 v2.ColorJitter(brightness=.3, hue=.2, saturation=.2, contrast=.3)
             ]
         , p=0.5),
-        v2.Resize(size=256, antialias=False),                   # same size as the tile im
+        v2.Resize(size=256, antialias=True),                    # same size as the tile im
     ]
 )
 
