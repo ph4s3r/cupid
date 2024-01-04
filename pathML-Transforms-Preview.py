@@ -1,6 +1,6 @@
 ##########################################################################################################
 # Author: Peter Karacsonyi                                                                               #
-# Last updated: 2023 Dec 10                                                                              #
+# Last updated: 2024 jan 4                                                                               #
 # This workbook has been made to determine the perfect PathML transformation configurations ->           #
 # It reads wsis and plots the image as well as all mask transformations to simulate final mask           #
 # Input: wsi image files, tested with OpenSlide .tif                                                     #
