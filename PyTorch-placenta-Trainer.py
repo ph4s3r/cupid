@@ -1,6 +1,6 @@
 ##########################################################################################################
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2023 Dec 10                                                                              #
+# Last updated: 2024 jan 4                                                                              #
 # This workbook loads wsi processed slides/tiles h5path file and trains a deep learning model with them  #
 # Input: h5path files                                                                                    #
 # Output: trained model & results                                                                        #
@@ -28,54 +28,45 @@ from torchvision.transforms import (
     v2,
 )  # v2 is the newest: https://pytorch.org/vision/stable/transforms.html
 
-# set h5path directory
-h5folder = Path("G:\\placenta_training\\h5\\")
+#####################
+# configure folders #
+#####################
+base_dir = Path("/mnt/bigdata/placenta")
+h5folder = base_dir / Path("h5")
 h5files = list(h5folder.glob("*.h5path"))
-model_checkpoint_dir = Path("G:\\placenta_training\\training_checkpoints\\")
+model_checkpoint_dir = base_dir / Path("training_checkpoints")
+result_path = base_dir / Path("training_results")
+
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-result_path = Path("G:\\placenta_training\\training_results\\")
 result_path.mkdir(parents=True, exist_ok=True)
 
-# instantiate tensorboard summarywriter (write the run's data into random subdir with some funny name)
+
+##############################################################################################################
+# instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
+##############################################################################################################
 session_name = generate_slug(2)
 print("Starting session ", session_name)
-writer = SummaryWriter(log_dir=f"G:\\placenta_training\\tensorboard_data\\{session_name}\\", comment=session_name)
+tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
+tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
+writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
 
-t_ToTensor = v2.Compose(
-    [
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True)
-    ]
-)
 
-t_AUG = v2.Compose(
-    [
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),
-        v2.RandomApply(
-            transforms=[
-                v2.RandomResizedCrop(size=96, antialias=True), 
-                v2.RandomRotation(degrees=(0, 359)), 
-                v2.ColorJitter(brightness=.5, hue=.3, saturation=.8, contrast=.5)
-            ]
-        , p=1)  
-    ]
-)
-
-# don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
-transforms = v2.Compose(
+#################
+# augmentations #
+#################
+transforms = v2.Compose( # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
     [
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.Resize(size=256, antialias=True)                     # best for resnet & vgg
         v2.RandomApply(
             transforms=[
                 v2.RandomRotation(degrees=(0, 359)),
                 v2.ColorJitter(brightness=.3, hue=.2, saturation=.2, contrast=.3)
             ]
-        , p=0.5)
+        , p=0.5),
+        v2.Resize(size=256, antialias=False),                   # same size as the tile im
     ]
 )
 
@@ -84,21 +75,28 @@ maskforms = v2.Compose(
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
-        v2.ToDtype(torch.uint8)                                 # float to int
+        v2.ToDtype(torch.uint8),                                # float to int
         v2.Resize(size=256, antialias=False)                    # same size as the tile im
     ]
 )
 
+
+##########################################################
+# drop tiles covered less than min_mask_coverage by mask #
+##########################################################
+min_mask_coverage = 0.35
 class TransformedPathmlTileSet(pathml.ml.TileDataset):
     def __init__(self, h5file):
         super().__init__(h5file)
+        self.dimx = self.tile_shape[0]
+        self.dimy = self.tile_shape[1]
         self.usable_indices = self._find_usable_tiles()
-        self.file_label = Path(self.file_path).stem  # Extract the filename without extension
+        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
 
     def _find_usable_tiles(self):
         usable_indices = []
-        threshold_percent = 0.35
-        threshold_val = int(500 * 500 * threshold_percent)
+        threshold_percent = min_mask_coverage
+        threshold_val = int(self.dimx * self.dimy * threshold_percent)
         initial_length = super().__len__()
 
         for idx in range(initial_length):
@@ -124,6 +122,10 @@ class TransformedPathmlTileSet(pathml.ml.TileDataset):
 
         return (tile_image, tile_masks, tile_labels, slide_labels)
 
+
+#########################################################################
+# inserting tiles from h5path with TransformedPathmlTileSet to datasets #
+#########################################################################
 datasets = []
 ds_fullsize = 0
 for h5file in h5files:
@@ -135,33 +137,55 @@ for ds in datasets:
 full_ds = torch.utils.data.ConcatDataset(datasets)
 
 
+########################
+# global std and means #
+########################
+determine_global_std_and_means = False
+# speed = ~5GB/min
+# if done, just write it back to v2.Normalize() and run again
+if determine_global_std_and_means:
+    mean, std = helpers.ds_means_stds.mean_stds(full_ds)
 
-# placenta_training_train_ds_normal = placenta_training(root="G:\\placenta_training\\", transform=t_ToTensor, split="train", download=True)
-# placenta_training_train_ds_aug = placenta_training(root="G:\\placenta_training\\", transform=t_AUG, split="train", download=True)
-# placenta_training_train_dataset = placenta_training_train_ds_normal + placenta_training_train_ds_aug
-# placenta_training_val_dataset = placenta_training(root="G:\\placenta_training\\", transform=t_ToTensor, split="val", download=True)
-# placenta_training_test_dataset = placenta_training(root="G:\\placenta_training\\", transform=t_ToTensor, split="test", download=True)
 
-# print("placenta_training_train_ds_normal len: ", len(placenta_training_train_ds_normal))
-# print("placenta_training_train_ds_aug len: ", len(placenta_training_train_ds_aug))
-# print("placenta_training_train_dataset len: ", len(placenta_training_train_dataset))
-# print("placenta_training_val_dataset len: ", len(placenta_training_val_dataset))
-# print("placenta_training_test_dataset len: ", len(placenta_training_test_dataset))
-
-batch_size = 128
-
+######################
+# set up dataloaders #
+######################
+batch_size = 64 # larger batch is faster!
+# fixed generator for reproducible split results
+generator = torch.Generator().manual_seed(42)
+train_cases, val_cases, test_cases = torch.utils.data.random_split( # split to 70% train, 20% val & 10% test
+    full_ds, [0.7, 0.2, 0.1], generator=generator
+)
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
-    placenta_training_train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
+    train_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
 val_loader = torch.utils.data.DataLoader(
-    placenta_training_val_dataset, batch_size=batch_size, shuffle=True, num_workers=0
+    val_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
 test_loader = torch.utils.data.DataLoader(
-    placenta_training_test_dataset, batch_size=batch_size, shuffle=True, num_workers=0
+    test_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
+print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases) + len(test_cases)} tiles from the original {ds_fullsize}")
 
-# se_resnet50 from torch hub
+###############
+# save tiles? #
+###############
+tile_dir = base_dir / "tiles"
+savetiles = False
+
+tile_dir.mkdir(parents=True, exist_ok=True)
+if savetiles:
+    start_time = time.time()
+    dataloaders = [train_loader, val_loader, test_loader]
+    lib.save_tiles(dataloaders, tile_dir)
+    time_elapsed = time.time() - start_time
+    print('saving completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+
+
+##################
+# begin training #
+##################
 SE_RESNET50 = torch.hub.load(
     'moskomule/senet.pytorch',
     'se_resnet50',
@@ -244,9 +268,9 @@ for epoch in range(num_epochs):
     all_labels = []
     all_predictions = []
 
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, _, labels_dict, _) in enumerate(train_loader):
         images = images.to(device)
-        labels = labels.to(device)
+        labels = labels_dict['class'].to(device)
         # forward pass
         outputs = model(images)
         loss = criterion(outputs, labels)
@@ -295,9 +319,9 @@ for epoch in range(num_epochs):
     val_all_predictions = []
 
     with torch.no_grad():
-        for images, labels in val_loader:
+        for images, _, labels_dict, _ in val_loader:
             images = images.to(device)
-            labels = labels.to(device)
+            labels = labels_dict['class'].to(device)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
