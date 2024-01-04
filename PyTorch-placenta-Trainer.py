@@ -129,6 +129,7 @@ class TransformedPathmlTileSet(pathml.ml.TileDataset):
 datasets = []
 ds_fullsize = 0
 for h5file in h5files:
+    print(f"creating dataset from {str(h5file)} with TransformedPathmlTileSet")
     datasets.append(TransformedPathmlTileSet(h5file))
 
 for ds in datasets:
@@ -150,7 +151,7 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 16 # larger batch is faster!
+batch_size = 32 # larger batch is faster!
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
 train_cases, val_cases, test_cases = torch.utils.data.random_split( # split to 70% train, 20% val & 10% test
@@ -250,7 +251,7 @@ class EarlyStopping:
         else:
             return False
 
-# early stop on val loss not decreasing for <patience> rounds with more than <min_delta>
+# early stop on val loss not decreasing for <patience> epochs with more than <min_delta>
 early_stop_val_loss = EarlyStopping(
     min_delta=0.001,
     patience=10,
@@ -351,7 +352,7 @@ for epoch in range(num_epochs):
 
     # save model checkpoint (epoch)
     if epoch > 2:
-        model_file = str(model_checkpoint_dir)+"\\"+session_name+str(epoch)+".ckpt"
+        model_file = str(model_checkpoint_dir)+"/"+session_name+str(epoch)+".ckpt"
         torch.save(model.state_dict(), model_file)
 
     # check early stopping conditions, stop if necessary
