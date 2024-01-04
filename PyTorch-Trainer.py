@@ -36,9 +36,11 @@ h5folder = base_dir / Path("h5")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 result_path = base_dir / Path("training_results")
+test_dataset_dir = base_dir / Path("test_dataset")
 
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 result_path.mkdir(parents=True, exist_ok=True)
+test_dataset_dir.mkdir(parents=True, exist_ok=True)
 
 
 ##############################################################################################################
@@ -168,6 +170,22 @@ test_loader = torch.utils.data.DataLoader(
     test_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
 print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases) + len(test_cases)} tiles from the original {ds_fullsize}")
+
+######################################
+# saving test dataset for evaluation #
+######################################
+test_dataset_file = str(test_dataset_dir)+"/"+session_name+"-test-dataset.pt"
+print("saving test dataset to ", test_dataset_file)
+test_data = []
+test_targets = []
+
+for data in test_cases:
+    # data contains (tile_image, tile_masks, tile_labels, slide_labels)
+    test_data.append(data[0]) # tile_image
+    test_targets.append(data[2]) # tile_labels
+
+torch.save({'data': test_data, 'targets': test_targets}, test_dataset_file)
+
 
 ###############
 # save tiles? #
