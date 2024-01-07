@@ -1,11 +1,11 @@
-import torch
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, auc
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 import os
 import torch
 from pathlib import Path
+from torchvision.transforms import v2
+import pathml
+import numpy as np
 from torchvision.utils import save_image
 
 def human_readable_size(size, decimal_places=2):
@@ -56,91 +56,78 @@ def vizBatch(im, tile_masks, tile_labels = None):
     plt.tight_layout()
     plt.show()
 
-def test_model(test_loader, model_path, device, model, tensorboard_log_dir, session_name = None) -> dict():
 
-    writer = None
+#################
+# augmentations #
+#################
+transforms = v2.Compose( # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
+    [
+        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
+        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
+        v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
+        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
+        v2.RandomApply(
+            transforms=[
+                v2.RandomRotation(degrees=(0, 359)),
+                v2.ColorJitter(brightness=.3, hue=.2, saturation=.2, contrast=.3)
+            ]
+        , p=0.5),
+        v2.Resize(size=256, antialias=False),                   # same size as the tile im
+    ]
+)
 
-    if session_name is not None:
-        writer = SummaryWriter(log_dir=tensorboard_log_dir, comment="test-results")
+maskforms = v2.Compose(
+    [
+        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
+        v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
+        v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
+        v2.ToDtype(torch.uint8),                                # float to int
+        v2.Resize(size=256, antialias=False)                    # same size as the tile im
+    ]
+)
 
-    model.load_state_dict(torch.load(model_path))
-    model = model.to(device)
 
-    true_labels = []
-    predictions = []
+##########################################################
+# drop tiles covered less than min_mask_coverage by mask #
+##########################################################
+min_mask_coverage = 0.35
+class TransformedPathmlTileSet(pathml.ml.TileDataset):
+    def __init__(self, h5file):
+        super().__init__(h5file)
+        self.dimx = self.tile_shape[0]
+        self.dimy = self.tile_shape[1]
+        self.usable_indices = self._find_usable_tiles()
+        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
 
-    model.eval()
+    def _find_usable_tiles(self):
+        usable_indices = []
+        threshold_percent = min_mask_coverage
+        threshold_val = int(self.dimx * self.dimy * threshold_percent)
+        initial_length = super().__len__()
 
-    correct = 0
-    total = 0
-    
-    with torch.no_grad():
-        for images, _, labels_dict, _ in test_loader:
-            images = images.to(device)
-            labels = labels_dict['class'].to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            outputs.shape
-            outputs.data.shape
-            probabilities = torch.sigmoid(outputs)  # the senet does not have a sigmoid output
-            predictions.extend(probabilities[:, 1].cpu().numpy()) # getting back the probs for both class, roc_curve needs only the positive 
-            true_labels.extend(labels.cpu().numpy())
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+        for idx in range(initial_length):
+            _, tile_masks, _, _ = super().__getitem__(idx)
+            coverage = np.sum(tile_masks == 127.)
+            if coverage >= threshold_val:
+                usable_indices.append(idx)
 
-    accuracy = 100 * correct / total
-    print('Accuracy: {:.2f}%'.format(100 * correct / total))
-    writer.add_text("Accuracy", str(accuracy), global_step=None, walltime=None)
+        return usable_indices
 
-    false_negatives = {}
+    def __len__(self):
+        return len(self.usable_indices)
 
-    for i, positive_index in enumerate(true_labels):
-        if positive_index == 1 and predictions[i] < 0.3:
-            false_negatives[predictions[i]] = i # dict with keys as the prediction scores and values as indexes of images (sorting is easy) 
+    def __getitem__(self, idx):
+        actual_idx = self.usable_indices[idx]
+        tile_image, tile_masks, tile_labels, slide_labels = super().__getitem__(actual_idx)
+        tile_image = transforms(tile_image)
+        tile_masks = maskforms(tile_masks)
 
-    worst_fns = sorted(false_negatives.items(), key=lambda item: item[0])
+        # Extract tile key from the original dataset
+        tile_labels['tile_key'] = self.tile_keys[actual_idx]
+        tile_labels['source_file'] = self.file_label
 
-    fpr, tpr, thresholds = roc_curve(true_labels, predictions)
-    roc_auc = auc(fpr, tpr)
+        return (tile_image, tile_masks, tile_labels, slide_labels)
 
-    # Ensure thresholds are within the expected range
-    thresholds = np.clip(thresholds, 0, 1)
-
-    # Normalize the threshold values
-    norm = plt.Normalize(vmin=thresholds.min(), vmax=thresholds.max())
-    cmap = plt.cm.viridis
-
-    # Create figure and axis
-    fig, ax = plt.subplots()
-
-    # Plot each segment of the ROC curve with color mapping to the thresholds
-    for i in range(len(fpr) - 1):
-        color = cmap(norm(thresholds[i]))
-        ax.plot(fpr[i:i+2], tpr[i:i+2], color=color, lw=2)
-
-    # Adding the colorbar
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])  # Important to ensure the colorbar works with our custom colors
-    fig.colorbar(sm, ax=ax, label='Threshold')
-
-    # Plotting the diagonal line for random chance
-    ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-
-    # Customize the plot
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('Receiver Operating Characteristic with Thresholds')
-    ax.legend(['ROC curve (area = {:.2f})'.format(roc_auc)], loc="lower right")
-
-    plt.show()
-    writer.add_figure("ROC/AUC fig", fig, global_step=None, close=True, walltime=None)
-    
-    writer.add_graph(model, images)
-    writer.close()
-
-    return worst_fns
 
 def save_tiles(dataloaders, save_dir):
     """
