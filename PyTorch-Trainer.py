@@ -387,6 +387,3 @@ for epoch in range(num_epochs):
 
 writer.flush()
 writer.close()
-
-# test (can be run with testrunner as well later)
-# lib.test_model(test_loader, model_file, 'cuda', model, tensorboard_log_dir, session_name=session_name)
