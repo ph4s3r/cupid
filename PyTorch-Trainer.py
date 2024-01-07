@@ -36,11 +36,9 @@ h5folder = base_dir / Path("h5")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 result_path = base_dir / Path("training_results")
-test_dataset_dir = base_dir / Path("test_dataset")
 
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 result_path.mkdir(parents=True, exist_ok=True)
-test_dataset_dir.mkdir(parents=True, exist_ok=True)
 
 
 ##############################################################################################################
@@ -156,8 +154,8 @@ if determine_global_std_and_means:
 batch_size = 32 # larger batch is faster!
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
-train_cases, val_cases, test_cases = torch.utils.data.random_split( # split to 70% train, 20% val & 10% test
-    full_ds, [0.7, 0.2, 0.1], generator=generator
+train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 20% val
+    full_ds, [0.7, 0.3], generator=generator
 )
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
@@ -166,26 +164,7 @@ train_loader = torch.utils.data.DataLoader(
 val_loader = torch.utils.data.DataLoader(
     val_cases, batch_size=batch_size, shuffle=True, num_workers=0
 )
-test_loader = torch.utils.data.DataLoader(
-    test_cases, batch_size=batch_size, shuffle=True, num_workers=0
-)
-print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases) + len(test_cases)} tiles from the original {ds_fullsize}")
-
-######################################
-# saving test dataset for evaluation #
-######################################
-test_dataset_file = str(test_dataset_dir)+"/"+session_name+"-test-dataset.pt"
-print("saving test dataset to ", test_dataset_file)
-test_data = []
-test_targets = []
-
-for data in test_cases:
-    # data contains (tile_image, tile_masks, tile_labels, slide_labels)
-    test_data.append(data[0]) # tile_image
-    test_targets.append(data[2]) # tile_labels
-
-torch.save({'data': test_data, 'targets': test_targets}, test_dataset_file)
-
+print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases)} tiles from the original {ds_fullsize}")
 
 ###############
 # save tiles? #
@@ -196,7 +175,7 @@ savetiles = False
 tile_dir.mkdir(parents=True, exist_ok=True)
 if savetiles:
     start_time = time.time()
-    dataloaders = [train_loader, val_loader, test_loader]
+    dataloaders = [train_loader, val_loader]
     lib.save_tiles(dataloaders, tile_dir)
     time_elapsed = time.time() - start_time
     print('saving completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
@@ -389,4 +368,4 @@ model_file = str(model_checkpoint_dir)+"/"+session_name+dtcomplete+".ckpt"
 torch.save(model.state_dict(), model_file)
 
 # test (can be run with testrunner as well later)
-lib.test_model(test_loader, model_file, 'cuda', model, tensorboard_log_dir, session_name=session_name)
+# lib.test_model(test_loader, model_file, 'cuda', model, tensorboard_log_dir, session_name=session_name)
