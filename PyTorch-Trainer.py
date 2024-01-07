@@ -3,7 +3,7 @@
 # Last updated: 2024 jan 7                                                                               #
 # Training model                                                                                         #
 # Input: h5path files                                                                                    #
-# Output: trained model & results                                                                        #
+# Output: trained model, optimizer, scheduler, epoch state, tensorboard data                             #
 ##########################################################################################################
 
 
@@ -19,11 +19,16 @@ import time
 import torch
 import signal
 from pathlib import Path
+from datetime import datetime
 from coolname import generate_slug
 from sklearn.metrics import precision_recall_fscore_support
 from torch.optim.lr_scheduler import MultiStepLR
 
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
+
+
+start_time = time.time()
+print(f"training prep started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
 
 #####################
 # configure folders #
@@ -32,10 +37,7 @@ base_dir = Path("/mnt/bigdata/placenta")
 h5folder = base_dir / Path("h5-train")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
-result_path = base_dir / Path("training_results")
-
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-result_path.mkdir(parents=True, exist_ok=True)
 
 
 ##############################################################################################################
@@ -100,18 +102,19 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 64 # larger batch is faster! (se_resnet max batch on 4080 with 16G mem is 64. on 3080 it is 32)
+batch_size = 88 # need to max the batch out by seeing how much memory it takes (nvitop!!)
+# however smaller batch sizes can sometimes provide better generalization
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
-train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 20% val
+train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 30% val
     full_ds, [0.7, 0.3], generator=generator
 )
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
-    train_cases, batch_size=batch_size, shuffle=True, num_workers=0
+    train_cases, batch_size=batch_size, shuffle=True, num_workers=8
 )
 val_loader = torch.utils.data.DataLoader(
-    val_cases, batch_size=batch_size, shuffle=True, num_workers=0
+    val_cases, batch_size=batch_size, shuffle=True, num_workers=8
 )
 print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases)} tiles from the original {ds_fullsize}")
 
@@ -123,11 +126,11 @@ savetiles = False
 
 tile_dir.mkdir(parents=True, exist_ok=True)
 if savetiles:
-    start_time = time.time()
+    st_start_time = time.time()
     dataloaders = [train_loader, val_loader]
     lib.save_tiles(dataloaders, tile_dir)
-    time_elapsed = time.time() - start_time
-    print('saving completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+    st_time_elapsed = time.time() - st_start_time
+    print('saving completed in {:.0f}m {:.0f}s'.format(st_time_elapsed // 60, st_time_elapsed % 60))
 
 
 ##################
@@ -146,15 +149,13 @@ model.fc = torch.nn.Linear(num_ftrs, 2)
 #####################################
 # can load saved weights and biases #
 #####################################
-if 1:
+if 0:
     checkpoint = torch.load(base_dir / "training_checkpoints" / "hissing-shellfish3.ckpt")
     model.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
 model = model.to(device)
-
-start_time = time.time()
 
 # hyper-params
 num_epochs = 20
@@ -211,6 +212,12 @@ early_stop_val_loss = EarlyStopping(
     verbose=True,
     consecutive=False
 )
+
+time_elapsed = time.time() - start_time
+print('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+start_time = time.time()
+print(f"training started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
+
 
 for epoch in range(num_epochs):
     model.train()

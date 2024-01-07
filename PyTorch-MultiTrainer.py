@@ -28,13 +28,13 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 ######################################
 # which checkpoint we should pick up #
 ######################################
-model_checkpoint = "warping-jackrabbit0.ckpt"
+model_checkpoint = "orchid-ibex7.ckpt"
 
 #################
 # training data #
 #################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5mini")
+h5folder = base_dir / Path("h5-train")
 
 
 #####################
@@ -50,11 +50,11 @@ result_path.mkdir(parents=True, exist_ok=True)
 ##############################################################################################################
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
 ##############################################################################################################
-session_name = generate_slug(2)
-print("Starting session ", session_name)
+session_name = model_checkpoint.split(".")[0][:-1]
+print("Continuing session ", session_name)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
-writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
+writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name+"-contd")
 
 
 ############################################$###########
@@ -97,18 +97,19 @@ full_ds = torch.utils.data.ConcatDataset(datasets)
 ######################
 # set up dataloaders #
 ######################
-batch_size = 64 # larger batch is faster! (se_resnet max batch on 4080 with 16G mem is 64. on 3080 it is 32)
+batch_size = 88 # need to max the batch out by seeing how much memory it takes (nvitop!!)
+# however smaller batch sizes can sometimes provide better generalization
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
-train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 20% val
+train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 30% val
     full_ds, [0.7, 0.3], generator=generator
 )
-# num_workers>0 still causes problems...
+
 train_loader = torch.utils.data.DataLoader(
-    train_cases, batch_size=batch_size, shuffle=True, num_workers=0
+    train_cases, batch_size=batch_size, shuffle=True, num_workers=8
 )
 val_loader = torch.utils.data.DataLoader(
-    val_cases, batch_size=batch_size, shuffle=True, num_workers=0
+    val_cases, batch_size=batch_size, shuffle=True, num_workers=8
 )
 print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases)} tiles from the original {ds_fullsize}")
 
@@ -128,7 +129,7 @@ SE_RESNET50 = torch.hub.load(
 
 num_ftrs = SE_RESNET50.fc.in_features
 SE_RESNET50.fc = torch.nn.Linear(num_ftrs, 2)
-# loadeing the saved model
+# loading the saved model
 SE_RESNET50.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
