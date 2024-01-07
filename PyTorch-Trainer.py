@@ -1,7 +1,7 @@
 ##########################################################################################################
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2024 jan 4                                                                              #
-# This workbook loads wsi processed slides/tiles h5path file and trains a deep learning model with them  #
+# Last updated: 2024 jan 7                                                                               #
+# Training model                                                                                         #
 # Input: h5path files                                                                                    #
 # Output: trained model & results                                                                        #
 ##########################################################################################################
@@ -29,7 +29,7 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 # configure folders #
 #####################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5mini")
+h5folder = base_dir / Path("h5-train")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 result_path = base_dir / Path("training_results")
@@ -133,19 +133,26 @@ if savetiles:
 ##################
 # begin training #
 ##################
-SE_RESNET50 = torch.hub.load(
+model = torch.hub.load(
     'moskomule/senet.pytorch',
     'se_resnet50',
     pretrained=True,
     verbose=True
     )
 
-num_ftrs = SE_RESNET50.fc.in_features
-SE_RESNET50.fc = torch.nn.Linear(num_ftrs, 2)
+num_ftrs = model.fc.in_features
+model.fc = torch.nn.Linear(num_ftrs, 2)
+
+#####################################
+# can load saved weights and biases #
+#####################################
+if 1:
+    checkpoint = torch.load(base_dir / "training_checkpoints" / "hissing-shellfish3.ckpt")
+    model.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
-model = SE_RESNET50.to(device)
+model = model.to(device)
 
 start_time = time.time()
 
