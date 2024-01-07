@@ -10,19 +10,17 @@
 # imports
 import os
 # local files
+import lib
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # pip
 import time
 import torch
-import pathml
 import signal
-import numpy as np
 from pathlib import Path
 from coolname import generate_slug
 from sklearn.metrics import precision_recall_fscore_support
 from torch.optim.lr_scheduler import MultiStepLR
-from torchvision.transforms import v2
 
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 
@@ -30,13 +28,13 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 ######################################
 # which checkpoint we should pick up #
 ######################################
-model_checkpoint = "unselfish-mongoose3.ckpt"
+model_checkpoint = "warping-jackrabbit0.ckpt"
 
 #################
 # training data #
 #################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5")
+h5folder = base_dir / Path("h5mini")
 
 
 #####################
@@ -57,78 +55,6 @@ print("Starting session ", session_name)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
 writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
-
-
-#################
-# augmentations #
-#################
-transforms = v2.Compose( # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
-    [
-        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
-        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
-        v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
-        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.RandomApply(
-            transforms=[
-                v2.RandomRotation(degrees=(0, 359)),
-                v2.ColorJitter(brightness=.3, hue=.2, saturation=.2, contrast=.3)
-            ]
-        , p=0.5),
-        v2.Resize(size=256, antialias=False),                   # same size as the tile im
-    ]
-)
-
-maskforms = v2.Compose(
-    [
-        v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
-        v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
-        v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
-        v2.ToDtype(torch.uint8),                                # float to int
-        v2.Resize(size=256, antialias=False)                    # same size as the tile im
-    ]
-)
-
-
-##########################################################
-# drop tiles covered less than min_mask_coverage by mask #
-##########################################################
-min_mask_coverage = 0.35
-class TransformedPathmlTileSet(pathml.ml.TileDataset):
-    def __init__(self, h5file):
-        super().__init__(h5file)
-        self.dimx = self.tile_shape[0]
-        self.dimy = self.tile_shape[1]
-        self.usable_indices = self._find_usable_tiles()
-        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
-
-    def _find_usable_tiles(self):
-        usable_indices = []
-        threshold_percent = min_mask_coverage
-        threshold_val = int(self.dimx * self.dimy * threshold_percent)
-        initial_length = super().__len__()
-
-        for idx in range(initial_length):
-            _, tile_masks, _, _ = super().__getitem__(idx)
-            coverage = np.sum(tile_masks == 127.)
-            if coverage >= threshold_val:
-                usable_indices.append(idx)
-
-        return usable_indices
-
-    def __len__(self):
-        return len(self.usable_indices)
-
-    def __getitem__(self, idx):
-        actual_idx = self.usable_indices[idx]
-        tile_image, tile_masks, tile_labels, slide_labels = super().__getitem__(actual_idx)
-        tile_image = transforms(tile_image)
-        tile_masks = maskforms(tile_masks)
-
-        # Extract tile key from the original dataset
-        tile_labels['tile_key'] = self.tile_keys[actual_idx]
-        tile_labels['source_file'] = self.file_label
-
-        return (tile_image, tile_masks, tile_labels, slide_labels)
 
 
 ############################################$###########
@@ -160,7 +86,7 @@ datasets = []
 ds_fullsize = 0
 for h5file in h5files:
     print(f"creating dataset from {str(h5file)} with TransformedPathmlTileSet")
-    datasets.append(TransformedPathmlTileSet(h5file))
+    datasets.append(lib.TransformedPathmlTileSet(h5file))
 
 for ds in datasets:
     ds_fullsize += ds.dataset_len
