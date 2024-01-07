@@ -151,7 +151,7 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 32 # larger batch is faster!
+batch_size = 128 # larger batch is faster!
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
 train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 20% val
@@ -201,7 +201,7 @@ model = SE_RESNET50.to(device)
 start_time = time.time()
 
 # hyper-params
-num_epochs = 80
+num_epochs = 20
 learning_rate = 0.001
 
 # loss and optimizer
