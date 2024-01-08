@@ -1,15 +1,12 @@
 
 
 import h5py
-import matplotlib.pyplot as plt
-import numpy as np
+from pathlib import Path
 from pprint import pprint
 
-folder = 'G:\\placenta\\h5\\'
+h5file = Path("/mnt/bigdata/placenta/h5-train") / "20230817_135246_a.h5path"
 
-file = "20230810_140324.tif.h5path"
-
-h5file = h5py.File(folder+file, 'r')
+h5file = h5py.File(h5file, 'r')
 
 
 def scan_hdf5(f, recursive=True, tab_step=2):
