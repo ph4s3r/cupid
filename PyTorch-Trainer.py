@@ -155,6 +155,10 @@ if 0:
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
+# make sure we use cudnn
+print("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
+# enable cudnn benchmarks
+torch.backends.cudnn.benchmark = True
 model = model.to(device)
 
 # hyper-params
