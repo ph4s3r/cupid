@@ -1,8 +1,8 @@
 ##########################################################################################################
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2024 jan 7                                                                               #
+# Last updated: 2024 jan 8                                                                               #
 # This workbook continues a training process from a saved checkpoint file                                #
-# Input: h5path files, checkpoint file                                                                   #
+# Input: h5path files, checkpoint file: epoch, optimizer, scheduler and session name (4 tensorboard)     #
 # Output: trained model & results                                                                        #
 ##########################################################################################################
 
@@ -28,7 +28,7 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 ######################################
 # which checkpoint we should pick up #
 ######################################
-model_checkpoint = "orchid-ibex7.ckpt"
+model_checkpoint = "orchid-ibex27.ckpt"
 
 #################
 # training data #
@@ -50,7 +50,7 @@ result_path.mkdir(parents=True, exist_ok=True)
 ##############################################################################################################
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
 ##############################################################################################################
-session_name = model_checkpoint.split(".")[0][:-1]
+session_name = ''.join([i for i in model_checkpoint.split(".")[0] if not i.isdigit()])
 print("Continuing session ", session_name)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
@@ -134,12 +134,16 @@ SE_RESNET50.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using {device}")
+# make sure we use cudnn
+print("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
+# enable cudnn benchmarks
+torch.backends.cudnn.benchmark = True
 model = SE_RESNET50.to(device)
 
 start_time = time.time()
 
 # hyper-params
-num_epochs = 20 + int(checkpoint["epoch"])
+num_epochs = 800 + int(checkpoint["epoch"])
 learning_rate = 0.001
 
 # loss and optimizer
@@ -195,7 +199,7 @@ early_stop_val_loss = EarlyStopping(
     consecutive=False
 )
 
-for epoch in range(int(checkpoint["epoch"]), num_epochs):
+for epoch in range(int(checkpoint["epoch"])+1, num_epochs):
     model.train()
 
     total_loss = 0
@@ -285,10 +289,9 @@ for epoch in range(int(checkpoint["epoch"]), num_epochs):
     # decay learning rate
     scheduler.step()
 
-    # save model checkpoint and data (epoch)
-    if epoch > 2 or interrupted:
-        checkpoint_file = str(model_checkpoint_dir)+"/"+session_name+str(epoch)+".ckpt"
-        save_model(epoch, model, optimizer, scheduler, checkpoint_file)
+    # save checkpoint at every epoch
+    checkpoint_file = str(model_checkpoint_dir)+"/"+session_name+str(epoch)+".ckpt"
+    save_model(epoch, model, optimizer, scheduler, checkpoint_file)
 
     if interrupted:
         print(f"KeyboardInterrupt received: saving model for session {session_name} and exiting")
