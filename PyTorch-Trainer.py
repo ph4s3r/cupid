@@ -18,6 +18,7 @@ import lib
 import time
 import torch
 import signal
+from apex import amp
 from pathlib import Path
 from datetime import datetime
 from coolname import generate_slug
@@ -69,12 +70,13 @@ def signal_handler(signum, frame):
 # attach signal handler
 signal.signal(signal.SIGINT, signal_handler)
 
-def save_model(epoch, model, optimizer, scheduler, checkpoint_file):
+def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
+            'amp': amp.state_dict()
             }, checkpoint_file)
         print(f"Model successfully saved to file {checkpoint_file}")
 
@@ -113,7 +115,7 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 52 # need to max the batch out by seeing how much memory it takes (nvitop!!)
+batch_size = 128 # need to max the batch out by seeing how much memory it takes (nvitop!!)
 # however smaller batch sizes can sometimes provide better generalization
 # fixed generator for reproducible split results
 # generator = torch.Generator().manual_seed(42)
@@ -162,6 +164,7 @@ model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
 #####################################
 # can load saved weights and biases #
 #####################################
+checkpoint = None
 if 0:
     checkpoint = torch.load(base_dir / "training_checkpoints" / "")
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -181,6 +184,12 @@ learning_rate = 0.001
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(params=model.parameters(), lr=0.6 / 1024 * batch_size, momentum=0.9, weight_decay=1e-4)
+
+# Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex
+model, optimizer = amp.initialize(model, optimizer, opt_level="O1", loss_scale="dynamic")
+if checkpoint is not None:
+    if checkpoint.get('amp') is not None:
+        amp.load_state_dict(checkpoint['amp'])
 
 # to update learning rate
 # scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
@@ -256,7 +265,9 @@ for epoch in range(num_epochs):
 
         # backward and optimize
         optimizer.zero_grad()
-        loss.backward()
+
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
@@ -331,7 +342,7 @@ for epoch in range(num_epochs):
     # save model checkpoint and data (epoch)
     if epoch > 2 or interrupted:
         checkpoint_file = str(model_checkpoint_dir)+"/"+session_name+str(epoch)+".ckpt"
-        save_model(epoch, model, optimizer, scheduler, checkpoint_file)
+        save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file)
 
     if interrupted:
         print(f"KeyboardInterrupt received: saving model for session {session_name} and exiting")
