@@ -1,6 +1,6 @@
 ##########################################################################################################
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2024 jan 7                                                                               #
+# Last updated: 2024 jan 17                                                                              #
 # Training model                                                                                         #
 # Input: h5path files                                                                                    #
 # Output: trained model, optimizer, scheduler, epoch state, tensorboard data                             #
@@ -24,6 +24,10 @@ from coolname import generate_slug
 from sklearn.metrics import precision_recall_fscore_support
 from torch.optim.lr_scheduler import MultiStepLR
 
+from nvidia_resnets.resnet import (
+    se_resnext101_32x4d,
+)
+
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 
 
@@ -34,7 +38,7 @@ print(f"training prep started at {datetime.fromtimestamp(time.time()).strftime('
 # configure folders #
 #####################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5-train")
+h5folder = base_dir / Path("h5-medium")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -102,7 +106,7 @@ if determine_global_std_and_means:
 ######################
 # set up dataloaders #
 ######################
-batch_size = 88 # need to max the batch out by seeing how much memory it takes (nvitop!!)
+batch_size = 52 # need to max the batch out by seeing how much memory it takes (nvitop!!)
 # however smaller batch sizes can sometimes provide better generalization
 # fixed generator for reproducible split results
 generator = torch.Generator().manual_seed(42)
@@ -133,24 +137,27 @@ if savetiles:
     print('saving completed in {:.0f}m {:.0f}s'.format(st_time_elapsed // 60, st_time_elapsed % 60))
 
 
+# https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
+# se-resnext101-32x4d paper: https://arxiv.org/pdf/1611.05431.pdf
+# torchhub: https://pytorch.org/hub/nvidia_deeplearningexamples_se-resnext/
+
+model = se_resnext101_32x4d(
+    pretrained=True
+)
+# default input image dim: 224
+
 ##################
 # begin training #
 ##################
-model = torch.hub.load(
-    'moskomule/senet.pytorch',
-    'se_resnet50',
-    pretrained=True,
-    verbose=True
-    )
 
 num_ftrs = model.fc.in_features
-model.fc = torch.nn.Linear(num_ftrs, 2)
+model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
 
 #####################################
 # can load saved weights and biases #
 #####################################
 if 0:
-    checkpoint = torch.load(base_dir / "training_checkpoints" / "hissing-shellfish3.ckpt")
+    checkpoint = torch.load(base_dir / "training_checkpoints" / "")
     model.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

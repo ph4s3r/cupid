@@ -72,7 +72,7 @@ transforms = v2.Compose( # don't change the order without knowing exactly what y
                 v2.ColorJitter(brightness=.3, hue=.15, saturation=.2, contrast=.3)
             ]
         , p=0.5),
-        v2.Resize(size=256, antialias=False),                   # same size as the tile im
+        v2.Resize(size=224, antialias=False),                   # same size as the tile im
     ]
 )
 
@@ -82,7 +82,7 @@ maskforms = v2.Compose(
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
         v2.ToDtype(torch.uint8),                                # float to int
-        v2.Resize(size=256, antialias=False)                    # same size as the tile im
+        v2.Resize(size=224, antialias=False)                    # same size as the tile im
     ]
 )
 
