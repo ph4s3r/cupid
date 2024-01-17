@@ -87,7 +87,8 @@ for h5file in h5files:
     ds_start_time = time.time()
     print(f"creating dataset from {str(h5file)} started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
     datasets.append(lib.TransformedPathmlTileSet(h5file))
-    print('dataset processed in {:.0f}m {:.0f}s'.format(time.time() - ds_start_time // 60, time.time() - ds_start_time % 60))
+    ds_complete = time.time() - ds_start_time
+    print('dataset processed in {:.0f}m {:.0f}s'.format(ds_complete // 60, ds_complete % 60))
 
 del h5files
 del ds_start_time
@@ -119,7 +120,6 @@ batch_size = 52 # need to max the batch out by seeing how much memory it takes (
 train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 30% val
     full_ds, [0.7, 0.3], # generator=generator
 )
-# num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
     train_cases, batch_size=batch_size, shuffle=True, num_workers=8
 )
@@ -139,7 +139,8 @@ if savetiles:
     st_start_time = time.time()
     dataloaders = [train_loader, val_loader]
     lib.save_tiles(dataloaders, tile_dir)
-    print('saving completed in {:.0f}m {:.0f}s'.format(time.time() - st_start_time // 60, time.time() - st_start_time % 60))
+    st_complete = time.time() - st_start_time
+    print('saving completed in {:.0f}m {:.0f}s'.format(st_complete // 60, st_complete % 60))
 
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
@@ -340,7 +341,8 @@ for epoch in range(num_epochs):
     if early_stop_val_loss(val_epoch_loss):
         break
     
-    print('epoch completed in {:.0f}m {:.0f}s'.format(time.time() - epoch_start_time // 60, time.time() - epoch_start_time % 60))
+    epoch_complete = time.time() - epoch_start_time
+    print('epoch completed in {:.0f}m {:.0f}s'.format(epoch_complete // 60, epoch_complete % 60))
     # end of epoch run (identation!)
 
 writer.flush()
