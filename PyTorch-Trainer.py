@@ -84,14 +84,20 @@ def save_model(epoch, model, optimizer, scheduler, checkpoint_file):
 datasets = []
 ds_fullsize = 0
 for h5file in h5files:
-    print(f"creating dataset from {str(h5file)} with TransformedPathmlTileSet")
+    ds_start_time = time.time()
+    print(f"creating dataset from {str(h5file)} started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
     datasets.append(lib.TransformedPathmlTileSet(h5file))
+    print('dataset processed in {:.0f}m {:.0f}s'.format(time.time() - ds_start_time // 60, time.time() - ds_start_time % 60))
+
+del h5files
+del ds_start_time
 
 for ds in datasets:
     ds_fullsize += ds.dataset_len
 
 full_ds = torch.utils.data.ConcatDataset(datasets)
 
+del datasets
 
 ########################
 # global std and means #
@@ -133,8 +139,7 @@ if savetiles:
     st_start_time = time.time()
     dataloaders = [train_loader, val_loader]
     lib.save_tiles(dataloaders, tile_dir)
-    st_time_elapsed = time.time() - st_start_time
-    print('saving completed in {:.0f}m {:.0f}s'.format(st_time_elapsed // 60, st_time_elapsed % 60))
+    print('saving completed in {:.0f}m {:.0f}s'.format(time.time() - st_start_time // 60, time.time() - st_start_time % 60))
 
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
@@ -231,6 +236,8 @@ print(f"training started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m
 
 
 for epoch in range(num_epochs):
+
+    epoch_start_time = time.time()
     model.train()
 
     total_loss = 0
@@ -332,6 +339,8 @@ for epoch in range(num_epochs):
     # check early stopping conditions, stop if necessary
     if early_stop_val_loss(val_epoch_loss):
         break
+    
+    print('epoch completed in {:.0f}m {:.0f}s'.format(time.time() - epoch_start_time // 60, time.time() - epoch_start_time % 60))
     # end of epoch run (identation!)
 
 writer.flush()
