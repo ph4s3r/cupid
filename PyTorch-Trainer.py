@@ -115,9 +115,9 @@ if determine_global_std_and_means:
 batch_size = 52 # need to max the batch out by seeing how much memory it takes (nvitop!!)
 # however smaller batch sizes can sometimes provide better generalization
 # fixed generator for reproducible split results
-generator = torch.Generator().manual_seed(42)
+# generator = torch.Generator().manual_seed(42)
 train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 30% val
-    full_ds, [0.7, 0.3], generator=generator
+    full_ds, [0.7, 0.3], # generator=generator
 )
 # num_workers>0 still causes problems...
 train_loader = torch.utils.data.DataLoader(
