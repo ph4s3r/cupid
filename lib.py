@@ -68,11 +68,10 @@ transforms = v2.Compose( # don't change the order without knowing exactly what y
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
         v2.RandomApply(
             transforms=[
-                v2.RandomRotation(degrees=(0, 359)),
                 v2.ColorJitter(brightness=.3, hue=.15, saturation=.2, contrast=.3)
             ]
-        , p=0.5),
-        v2.Resize(size=224, antialias=False),                   # same size as the tile im
+        , p=0.3),
+        v2.Resize(size=224, antialias=True),                   # same size as the tile im
     ]
 )
 
