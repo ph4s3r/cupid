@@ -10,6 +10,7 @@
 # imports
 import os, sys
 # local files
+import dali
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 import helpers.ds_means_stds
@@ -24,6 +25,8 @@ from datetime import datetime
 from coolname import generate_slug
 from sklearn.metrics import precision_recall_fscore_support
 from torch.optim.lr_scheduler import MultiStepLR
+from nvidia.dali.plugin.pytorch import DALIGenericIterator
+from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
@@ -43,6 +46,7 @@ h5folder = base_dir / Path("h5-train")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+tiles_dir = base_dir / Path("tiles")
 
 
 ##############################################################################################################
@@ -80,73 +84,51 @@ def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
             }, checkpoint_file)
         print(f"Model successfully saved to file {checkpoint_file}")
 
-#########################################################################
-# inserting tiles from h5path with TransformedPathmlTileSet to datasets #
-#########################################################################
-datasets = []
-ds_fullsize = 0
-for h5file in h5files:
-    ds_start_time = time.time()
-    print(f"creating dataset from {str(h5file)} started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
-    datasets.append(lib.TransformedPathmlTileSet(h5file))
-    ds_complete = time.time() - ds_start_time
-    print('dataset processed in {:.0f}m {:.0f}s'.format(ds_complete // 60, ds_complete % 60))
-
-del h5files
-del ds_start_time
-
-for ds in datasets:
-    ds_fullsize += ds.dataset_len
-
-full_ds = torch.utils.data.ConcatDataset(datasets)
-
-del datasets
 
 ########################
-# global std and means #
+# read tiles with DALI #
 ########################
-determine_global_std_and_means = False
-# speed = ~5GB/min
-# if done, just write it back to v2.Normalize() and run again
-if determine_global_std_and_means:
-    mean, std = helpers.ds_means_stds.mean_stds(full_ds)
 
-
-######################
-# set up dataloaders #
-######################
 batch_size = 128 # need to max the batch out by seeing how much memory it takes (nvitop!!)
-# however smaller batch sizes can sometimes provide better generalization
-# fixed generator for reproducible split results
-# generator = torch.Generator().manual_seed(42)
-train_cases, val_cases = torch.utils.data.random_split( # split to 70% train, 30% val
-    full_ds, [0.7, 0.3], # generator=generator
+# we make a 80-20 split by using 5 shards (splitting the images to 5 batches: each shard number refers to 20% of the data)
+num_shards = 5
+train_shard_ids = list(range(4))  # Shards 0-3 for training
+val_shard_id = 4  # Shard 4 for validation
+
+# train and val pipeline and iterator
+train_pipelines = [dali.cpupipe(
+    tiles_dir, 
+    shard_id=i, 
+    num_shards=num_shards, 
+    num_threads=16, 
+    device_id=0, 
+    batch_size=batch_size
+) for i in train_shard_ids]
+
+val_pipeline = dali.cpupipe(
+    tiles_dir, 
+    shard_id=val_shard_id, 
+    num_shards=num_shards, 
+    num_threads=16, 
+    device_id=0, 
+    batch_size=batch_size
 )
-train_loader = torch.utils.data.DataLoader(
-    train_cases, batch_size=batch_size, shuffle=True, num_workers=8
+
+# loaders
+
+train_data = DALIGenericIterator(
+    train_pipelines,
+    ['data', 'label'],
+    reader_name='Reader',
+    last_batch_policy=LastBatchPolicy.DROP
 )
-val_loader = torch.utils.data.DataLoader(
-    val_cases, batch_size=batch_size, shuffle=True, num_workers=8
+
+val_data = DALIGenericIterator(
+    [val_pipeline],
+    ['data', 'label'],
+    reader_name='Reader',
+    last_batch_policy=LastBatchPolicy.DROP
 )
-print(f"after filtering the dataset for usable tiles, we have left with {len(train_cases) + len(val_cases)} tiles from the original {ds_fullsize}")
-
-###############
-# save tiles? #
-###############
-tile_dir = base_dir / "tiles"
-savetiles = True
-
-tile_dir.mkdir(parents=True, exist_ok=True)
-if savetiles:
-    st_start_time = time.time()
-    dataloaders = [train_loader, val_loader]
-    lib.save_tiles(dataloaders, tile_dir)
-    st_complete = time.time() - st_start_time
-    print('saving completed in {:.0f}m {:.0f}s'.format(st_complete // 60, st_complete % 60))
-
-if savetiles:
-    sys.exit("tile saving completed.")
-
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
 # se-resnext101-32x4d paper: https://arxiv.org/pdf/1611.05431.pdf
@@ -181,15 +163,14 @@ torch.backends.cudnn.benchmark = True
 model = model.to(device)
 
 # hyper-params
-num_epochs = 20
-learning_rate = 0.001
+num_epochs = 120
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(params=model.parameters(), lr=0.6 / 1024 * batch_size, momentum=0.9, weight_decay=1e-4)
+optimizer = torch.optim.SGD(params=model.parameters(), lr=0.1 / 1024 * batch_size, momentum=0.9, weight_decay=1e-4)
 
 # Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex
-model, optimizer = amp.initialize(model, optimizer, opt_level="O1", loss_scale="dynamic")
+model, optimizer = amp.initialize(model, optimizer, opt_level="O2", loss_scale="dynamic")
 if checkpoint is not None:
     if checkpoint.get('amp') is not None:
         amp.load_state_dict(checkpoint['amp'])
@@ -199,8 +180,7 @@ if checkpoint is not None:
 scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
 
 # train
-total_step = len(train_loader)
-curr_lr = learning_rate
+total_step = len(train_data)
 
 # early stop class (val_loss)
 class EarlyStopping:
@@ -259,9 +239,10 @@ for epoch in range(num_epochs):
     all_labels = []
     all_predictions = []
 
-    for i, (images, _, labels_dict, _) in enumerate(train_loader):
-        images = images.to(device)
-        labels = labels_dict['class'].to(device)
+    for i, data in enumerate(train_data):
+        images, labels_dict = data[0]['data'], data[0]['label']
+        images = images.to(device).to(torch.float16)
+        labels = labels_dict.squeeze(-1).long().to(device)
         # forward pass
         outputs = model(images)
         loss = criterion(outputs, labels)
@@ -312,9 +293,10 @@ for epoch in range(num_epochs):
     val_all_predictions = []
 
     with torch.no_grad():
-        for images, _, labels_dict, _ in val_loader:
-            images = images.to(device)
-            labels = labels_dict['class'].to(device)
+        for data in val_data:
+            images, labels_dict = data[0]['data'], data[0]['label']
+            images = images.to(device).to(torch.float16)
+            labels = labels_dict.squeeze(-1).long().to(device)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -326,7 +308,7 @@ for epoch in range(num_epochs):
             val_all_labels.extend(labels.cpu().numpy())
             val_all_predictions.extend(predicted.cpu().numpy())
 
-    val_epoch_loss = val_loss / len(val_loader)
+    val_epoch_loss = val_loss / len(val_data)
     val_epoch_acc = val_correct / val_total
     val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
