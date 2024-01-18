@@ -91,13 +91,13 @@ def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
 # read tiles with DALI #
 ########################
 
-batch_size = 128 # need to max the batch out by seeing how much memory it takes (nvitop!!)
+batch_size = 128 # 128 with AMP, 62 without
 # we make a 80-20 split by using 5 shards (splitting the images to 5 batches: each shard number refers to 20% of the data)
 num_shards = 5
 train_shard_ids = list(range(4))  # Shards 0-3 for training
 val_shard_id = 4  # Shard 4 for validation
 
-# train and val pipeline and iterator
+# pipelines
 train_pipelines = [dali.cpupipe(
     tiles_dir, 
     shard_id=i, 
@@ -106,7 +106,6 @@ train_pipelines = [dali.cpupipe(
     device_id=0, 
     batch_size=batch_size
 ) for i in train_shard_ids]
-
 val_pipeline = dali.cpupipe(
     tiles_dir, 
     shard_id=val_shard_id, 
@@ -117,19 +116,18 @@ val_pipeline = dali.cpupipe(
 )
 
 # loaders
-
 train_data = DALIGenericIterator(
     train_pipelines,
     ['data', 'label'],
     reader_name='Reader',
-    last_batch_policy=LastBatchPolicy.DROP
+    last_batch_policy=LastBatchPolicy.PARTIAL
 )
 
 val_data = DALIGenericIterator(
     [val_pipeline],
     ['data', 'label'],
     reader_name='Reader',
-    last_batch_policy=LastBatchPolicy.DROP
+    last_batch_policy=LastBatchPolicy.PARTIAL
 )
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
@@ -176,7 +174,7 @@ optimizer = torch.optim.SGD(params=model.parameters(), lr=0.003, momentum=0.9, n
 model, optimizer = amp.initialize(
         model, 
         optimizer,
-        opt_level="O1", # Mixed precision
+        opt_level="O1", # 01: Mixed precision
         loss_scale="dynamic",
         # just all the defaults for 01 
         cast_model_type=None,
@@ -294,12 +292,7 @@ for epoch in range(num_epochs):
         total += labels.size(0)
         total_correct += (predicted == labels).sum().item()
         all_labels.extend(labels.cpu().numpy())
-        all_predictions.extend(predicted.cpu().numpy())
-        
-        if (i+1) % 100 == 0:
-            time_elapsed = time.time() - start_time
-            print ("Training   - Epoch [{}/{}], Step [{}/{}] Loss: {:.6f} in {:.0f}m {:.0f}s"
-                .format(epoch+1, num_epochs, i+1, total_step, loss.item(), time_elapsed // 60, time_elapsed % 60))
+        all_predictions.extend(predicted.cpu().numpy())     
 
     epoch_loss = total_loss / total_step
     epoch_acc = total_correct / total
@@ -316,8 +309,7 @@ for epoch in range(num_epochs):
     writer.add_scalar('params/learning_rate', latest_lr, epoch)
 
     # show stats at the end of epoch
-    log.info(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
-
+    log.info(f"Epoch {epoch+1}/{num_epochs} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
     # validation
     model.eval()
 
@@ -378,7 +370,6 @@ for epoch in range(num_epochs):
         break
     
     epoch_complete = time.time() - epoch_start_time
-    log.info('epoch {} completed in {:.0f}m {:.0f}s'.format(epoch, epoch_complete // 60, epoch_complete % 60))
     # end of epoch run (identation!)
 
 writer.flush()
