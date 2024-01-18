@@ -35,9 +35,6 @@ from nvidia_resnets.resnet import (
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 
 
-start_time = time.time()
-print(f"training prep started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
-
 #####################
 # configure folders #
 #####################
@@ -51,7 +48,6 @@ tiles_dir = base_dir / Path("tiles")
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
 ##############################################################################################################
 session_name = generate_slug(2)
-print("Starting session ", session_name)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
 writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
@@ -62,7 +58,8 @@ writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
 #############################################
 dl.setLogger(tensorboard_log_dir / Path("logs.txt"))
 log = logging.getLogger("spl")
-
+start_time = time.time()
+log.info(f"session {session_name} started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
 
 ############################################$###########
 # KeyboardInterrupt: stop training and save checkpoint #
@@ -75,7 +72,7 @@ interrupted = False
 def signal_handler(signum, frame):
     global interrupted
     interrupted = True
-    print("Interrupt received, stopping...")
+    log.info("Interrupt received, stopping...")
 # attach signal handler
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -87,7 +84,7 @@ def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
             'scheduler_state_dict': scheduler.state_dict(),
             'amp': amp.state_dict()
             }, checkpoint_file)
-        print(f"Model successfully saved to file {checkpoint_file}")
+        log.info(f"Model successfully saved to file {checkpoint_file}")
 
 
 ########################
@@ -160,9 +157,9 @@ if 0:
     model.load_state_dict(checkpoint["model_state_dict"])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using {device}")
+log.info(f"Using {device}")
 # make sure we use cudnn
-print("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
+log.info("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
 # enable cudnn benchmarks
 torch.backends.cudnn.benchmark = True
 model = model.to(device)
@@ -174,7 +171,8 @@ num_epochs = 120
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(params=model.parameters(), lr=0.003, momentum=0.9, nesterov=True, weight_decay=1e-4)
 
-# Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex
+# Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex deprecated...
+# TODO: change to https://pytorch.org/docs/stable/amp.html
 model, optimizer = amp.initialize(
         model, 
         optimizer,
@@ -222,10 +220,10 @@ class EarlyStopping:
             if self.consecutive:    # stopping only on consecutive <patience> number of degradation epochs
                 self.counter = 0 
         if self.verbose and self.epoch > 1:
-            print(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
+            log.info(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
         self.last_val_loss = val_loss
         if self.early_stop:
-            print("Early stop condition reached, stopping training")
+            log.info("Early stop condition reached, stopping training")
             return True
         else:
             return False
@@ -239,10 +237,10 @@ early_stop_val_loss = EarlyStopping(
 )
 
 time_elapsed = time.time() - start_time
-print('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+log.info('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 start_time = time.time()
 training_start = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
-print(f"training started at {training_start}")
+log.info(f"training started at {training_start}")
 
 hyperparams_tensorboard = {
   "scheduler": {
@@ -318,7 +316,7 @@ for epoch in range(num_epochs):
     writer.add_scalar('params/learning_rate', latest_lr, epoch)
 
     # show stats at the end of epoch
-    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
+    log.info(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
 
     # validation
     model.eval()
@@ -361,7 +359,7 @@ for epoch in range(num_epochs):
     writer.add_scalar('weighted_recall/val', val_recall, epoch)
     writer.add_scalar('weighted_f1/val', val_f1_score, epoch)
 
-    print(f"Validation - Epoch {epoch+1}/{num_epochs} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
+    log.info(f"Validation - Epoch {epoch+1}/{num_epochs} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
     # decay learning rate
     scheduler.step()
@@ -372,7 +370,7 @@ for epoch in range(num_epochs):
         save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file)
 
     if interrupted:
-        print(f"KeyboardInterrupt received: saving model for session {session_name} and exiting")
+        log.info(f"KeyboardInterrupt received: saving model for session {session_name} and exiting")
         break
 
     # check early stopping conditions, stop if necessary
@@ -380,7 +378,7 @@ for epoch in range(num_epochs):
         break
     
     epoch_complete = time.time() - epoch_start_time
-    print('epoch {} completed in {:.0f}m {:.0f}s'.format(epoch, epoch_complete // 60, epoch_complete % 60))
+    log.info('epoch {} completed in {:.0f}m {:.0f}s'.format(epoch, epoch_complete // 60, epoch_complete % 60))
     # end of epoch run (identation!)
 
 writer.flush()
