@@ -370,7 +370,6 @@ for epoch in range(num_epochs):
         break
     
     epoch_complete = time.time() - epoch_start_time
-    log.info('epoch {} completed in {:.0f}m {:.0f}s'.format(epoch, epoch_complete // 60, epoch_complete % 60))
     # end of epoch run (identation!)
 
 writer.flush()
