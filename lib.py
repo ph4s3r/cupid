@@ -1,12 +1,9 @@
 import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
-import os
 import torch
 from pathlib import Path
 from torchvision.transforms import v2
 import pathml
 import numpy as np
-from torchvision.utils import save_image
 
 def human_readable_size(size, decimal_places=2):
     """Convert a size in bytes to a human-readable format."""
@@ -126,34 +123,3 @@ class TransformedPathmlTileSet(pathml.ml.TileDataset):
         tile_labels['source_file'] = self.file_label
 
         return (tile_image, tile_masks, tile_labels, slide_labels)
-
-
-def save_tiles(dataloaders, save_dir):
-    """
-    Save tiles from multiple DataLoaders as PNG images.
-
-    Args:
-    dataloaders (list of DataLoader): List of DataLoaders to process.
-    save_dir (str): Directory path where images will be saved.
-
-    Returns:
-    None
-    """
-
-    for loader in dataloaders:
-        for batch in loader:
-            images, _, tile_labels, _ = batch  # Adjust if your dataloader structure is different
-
-            tile_keys = tile_labels['tile_key']
-            classes = tile_labels['class']
-            wsi_name = tile_labels['wsi_name']
-
-            for im, key, cl, name in zip(images, tile_keys, classes, wsi_name):
-                # Construct filename using 'source_file' and 'tile_key'
-                filename = f"{key}cl{cl}.png".replace("(", "").replace(")", "_").replace(",", "_").replace(" ", "")
-                try:
-                    save_image(im, os.path.join(save_dir, name, filename))
-                except FileNotFoundError: # need to create tile subdir
-                    Path(os.path.join(save_dir, name)).mkdir(parents=True, exist_ok=True)
-                    save_image(im, os.path.join(save_dir, name, filename))
-                
