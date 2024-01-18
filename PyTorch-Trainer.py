@@ -11,12 +11,14 @@
 import os
 # local files
 import lib, dali
+import helpers.doublelogger as dl
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # pip
 import time
 import torch
 import signal
+import logging
 from apex import amp
 from pathlib import Path
 from datetime import datetime
@@ -53,6 +55,13 @@ print("Starting session ", session_name)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
 writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
+
+
+#############################################
+# double logging to stdout and file as well #
+#############################################
+dl.setLogger(tensorboard_log_dir / Path("logs.txt"))
+log = logging.getLogger("spl")
 
 
 ############################################$###########
