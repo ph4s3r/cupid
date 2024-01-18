@@ -8,13 +8,11 @@
 
 
 # imports
-import os, sys
+import os
 # local files
 import dali
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
-import helpers.ds_means_stds
-import lib
 # pip
 import time
 import torch
@@ -24,7 +22,7 @@ from pathlib import Path
 from datetime import datetime
 from coolname import generate_slug
 from sklearn.metrics import precision_recall_fscore_support
-from torch.optim.lr_scheduler import MultiStepLR
+from torch.optim.lr_scheduler import StepLR
 from nvidia.dali.plugin.pytorch import DALIGenericIterator
 from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 
@@ -42,8 +40,6 @@ print(f"training prep started at {datetime.fromtimestamp(time.time()).strftime('
 # configure folders #
 #####################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5-train")
-h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 tiles_dir = base_dir / Path("tiles")
@@ -167,23 +163,35 @@ num_epochs = 120
 
 # loss and optimizer
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(params=model.parameters(), lr=0.1 / 1024 * batch_size, momentum=0.9, weight_decay=1e-4)
+optimizer = torch.optim.SGD(params=model.parameters(), lr=0.003, momentum=0.9, nesterov=True, weight_decay=1e-4)
 
 # Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex
-model, optimizer = amp.initialize(model, optimizer, opt_level="O2", loss_scale="dynamic")
+model, optimizer = amp.initialize(
+    model, optimizer,
+    opt_level="O1", # Mixed precision
+    loss_scale="dynamic",
+    # just all the defaults for 01 
+    cast_model_type=None
+    patch_torch_functions=True
+    keep_batchnorm_fp32=None
+    master_weights=None**
+    loss_scale="dynamic"
+                                  
+                                  )
 if checkpoint is not None:
     if checkpoint.get('amp') is not None:
         amp.load_state_dict(checkpoint['amp'])
 
 # to update learning rate
-# scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
-scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
+scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
+# scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
 
 # train
 total_step = len(train_data)
 
 # early stop class (val_loss)
 class EarlyStopping:
+    # TODO: use a weighted metric
     def __init__(self, patience=5, min_delta=0.001, verbose=False, consecutive=False):
 
         self.patience = patience
@@ -206,7 +214,7 @@ class EarlyStopping:
             if self.consecutive:    # stopping only on consecutive <patience> number of degradation epochs
                 self.counter = 0 
         if self.verbose and self.epoch > 1:
-            print(f"Early stop checker: current validation loss: {val_loss:.4f}, last validation loss: {self.last_val_loss:.4f}, delta: {(self.last_val_loss - val_loss):.4f}, min_delta: {self.min_delta:.4f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
+            print(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
         self.last_val_loss = val_loss
         if self.early_stop:
             print("Early stop condition reached, stopping training")
@@ -217,7 +225,7 @@ class EarlyStopping:
 # early stop on val loss not decreasing for <patience> epochs with more than <min_delta>
 early_stop_val_loss = EarlyStopping(
     min_delta=0.001,
-    patience=10,
+    patience=15,
     verbose=True,
     consecutive=False
 )
@@ -263,7 +271,7 @@ for epoch in range(num_epochs):
         
         if (i+1) % 100 == 0:
             time_elapsed = time.time() - start_time
-            print ("Training   - Epoch [{}/{}], Step [{}/{}] Loss: {:.4f} in {:.0f}m {:.0f}s"
+            print ("Training   - Epoch [{}/{}], Step [{}/{}] Loss: {:.6f} in {:.0f}m {:.0f}s"
                 .format(epoch+1, num_epochs, i+1, total_step, loss.item(), time_elapsed // 60, time_elapsed % 60))
 
     epoch_loss = total_loss / total_step
@@ -273,15 +281,15 @@ for epoch in range(num_epochs):
 
     # write epoch learning stats to tensorboard & file
     writer.add_scalar("loss/train", loss, epoch)
-    writer.add_scalar('accuracy/train', epoch_acc, epoch)
+    writer.add_scalar('acc/train', epoch_acc, epoch)
     writer.add_scalar('weighted_precision/train', precision, epoch)
     writer.add_scalar('weighted_recall/train', recall, epoch)
     writer.add_scalar('weighted_f1/train', f1_score, epoch)
     latest_lr = torch.optim.lr_scheduler.MultiStepLR.get_last_lr(scheduler)[-1]
-    writer.add_scalar('learning_rate', latest_lr, epoch)
+    writer.add_scalar('params/learning_rate', latest_lr, epoch)
 
     # show stats at the end of epoch
-    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1_score:.4f}, Last lr: {latest_lr:.4f}")
+    print(f"Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
 
     # validation
     model.eval()
@@ -312,14 +320,19 @@ for epoch in range(num_epochs):
     val_epoch_acc = val_correct / val_total
     val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
+    train_val_acc_diff = epoch_acc - val_epoch_acc
+    train_val_loss_diff = val_loss - loss 
+
     # log validation stats
     writer.add_scalar("loss/val", val_epoch_loss, epoch)
-    writer.add_scalar('accuracy/val', val_epoch_acc, epoch)
+    writer.add_scalar('acc/val', val_epoch_acc, epoch)
+    writer.add_scalar("acc/train-val-diff", train_val_acc_diff, epoch)
+    writer.add_scalar("loss/val_loss-loss-diff", train_val_loss_diff, epoch)
     writer.add_scalar('weighted_precision/val', val_precision, epoch)
     writer.add_scalar('weighted_recall/val', val_recall, epoch)
     writer.add_scalar('weighted_f1/val', val_f1_score, epoch)
 
-    print(f"Validation - Epoch {epoch+1}/{num_epochs} - Loss: {val_epoch_loss:.4f}, Acc: {val_epoch_acc:.4f}, Precision: {val_precision:.4f}, Recall: {val_recall:.4f}, F1: {val_f1_score:.4f}")
+    print(f"Validation - Epoch {epoch+1}/{num_epochs} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
     # decay learning rate
     scheduler.step()
@@ -338,7 +351,7 @@ for epoch in range(num_epochs):
         break
     
     epoch_complete = time.time() - epoch_start_time
-    print('epoch completed in {:.0f}m {:.0f}s'.format(epoch_complete // 60, epoch_complete % 60))
+    print('epoch {} completed in {:.0f}m {:.0f}s'.format(epoch, epoch_complete // 60, epoch_complete % 60))
     # end of epoch run (identation!)
 
 writer.flush()
