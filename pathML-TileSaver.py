@@ -66,7 +66,7 @@ del h5files, datasets, ds_start_time
 ######################
 batch_size = 1024 # need to max the batch out by seeing how much memory it takes (nvitop!!)
 dataloader = torch.utils.data.DataLoader(
-    full_ds, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True
+    full_ds, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True
 )
 
 print(f"after filtering the dataset for usable tiles, we have left with {dataloader.dataset.cummulative_sizes[-1]} tiles from the original {ds_fullsize}. Please note that this length might only be one dataset's length, so double check.")
