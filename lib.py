@@ -1,9 +1,14 @@
-import matplotlib.pyplot as plt
+import json
 import torch
-from pathlib import Path
-from torchvision.transforms import v2
 import pathml
 import numpy as np
+from pathlib import Path
+import matplotlib.pyplot as plt
+from torchvision.transforms import v2
+
+def pretty_json(hp):
+  json_hp = json.dumps(hp, indent=2)
+  return "".join("\t" + line for line in json_hp.splitlines(True))
 
 def human_readable_size(size, decimal_places=2):
     """Convert a size in bytes to a human-readable format."""

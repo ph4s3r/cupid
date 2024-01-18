@@ -10,7 +10,7 @@
 # imports
 import os
 # local files
-import dali
+import lib, dali
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # pip
@@ -167,17 +167,16 @@ optimizer = torch.optim.SGD(params=model.parameters(), lr=0.003, momentum=0.9, n
 
 # Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex
 model, optimizer = amp.initialize(
-    model, optimizer,
-    opt_level="O1", # Mixed precision
-    loss_scale="dynamic",
-    # just all the defaults for 01 
-    cast_model_type=None
-    patch_torch_functions=True
-    keep_batchnorm_fp32=None
-    master_weights=None**
-    loss_scale="dynamic"
-                                  
-                                  )
+        model, 
+        optimizer,
+        opt_level="O1", # Mixed precision
+        loss_scale="dynamic",
+        # just all the defaults for 01 
+        cast_model_type=None,
+        patch_torch_functions=True,
+        keep_batchnorm_fp32=None,
+        master_weights=None,
+    )
 if checkpoint is not None:
     if checkpoint.get('amp') is not None:
         amp.load_state_dict(checkpoint['amp'])
@@ -233,8 +232,29 @@ early_stop_val_loss = EarlyStopping(
 time_elapsed = time.time() - start_time
 print('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 start_time = time.time()
-print(f"training started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
+training_start = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
+print(f"training started at {training_start}")
 
+hyperparams_tensorboard = {
+  "scheduler": {
+      "scheduler_type": str(scheduler), 
+      "scheduler.step_size": str(scheduler.step_size),
+      "scheduler.gamma": str(scheduler.gamma),
+  },
+  "optimizer": {
+      "optimizer": str(optimizer),
+  },
+  "amp": {
+      "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options)
+  },
+  "others": {
+      "batch_size": str(batch_size),
+      "training_started": str(training_start)
+  },    
+  "comment": "trying to get out of volatile acc",
+}
+
+writer.add_text("hyperparameters", lib.pretty_json(hyperparams_tensorboard))
 
 for epoch in range(num_epochs):
 
