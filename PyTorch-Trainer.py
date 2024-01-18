@@ -8,7 +8,7 @@
 
 
 # imports
-import os
+import os, sys
 # local files
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
@@ -39,7 +39,7 @@ print(f"training prep started at {datetime.fromtimestamp(time.time()).strftime('
 # configure folders #
 #####################
 base_dir = Path("/mnt/bigdata/placenta")
-h5folder = base_dir / Path("h5-medium")
+h5folder = base_dir / Path("h5-train")
 h5files = list(h5folder.glob("*.h5path"))
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -134,7 +134,7 @@ print(f"after filtering the dataset for usable tiles, we have left with {len(tra
 # save tiles? #
 ###############
 tile_dir = base_dir / "tiles"
-savetiles = False
+savetiles = True
 
 tile_dir.mkdir(parents=True, exist_ok=True)
 if savetiles:
@@ -143,6 +143,9 @@ if savetiles:
     lib.save_tiles(dataloaders, tile_dir)
     st_complete = time.time() - st_start_time
     print('saving completed in {:.0f}m {:.0f}s'.format(st_complete // 60, st_complete % 60))
+
+if savetiles:
+    sys.exit("tile saving completed.")
 
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
