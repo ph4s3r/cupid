@@ -20,24 +20,17 @@ from datetime import datetime
 from torchvision.utils import save_image
 
 
-
-
 ##############################
 # where to load the h5s from #
 ##############################
 base_dir = "/mnt/bigdata/placenta"
-h5_subdir = "h5-infer-unknown"
+h5_subdir = "h5-mini"
+
 
 ###########################
 # where to save the tiles #
 ###########################
-tile_dir = "tiles-infer"
-
-
-
-
-
-
+tile_dir = "tiles"
 
 
 #########################################################################
@@ -69,7 +62,7 @@ dataloader = torch.utils.data.DataLoader(
     full_ds, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True
 )
 
-print(f"after filtering the dataset for usable tiles, we have left with {dataloader.dataset.cumulative_sizes[-1]} tiles from the original {ds_fullsize}.")
+print(f"after dropping empty tiles, we have {dataloader.dataset.cumulative_sizes[-1]} tiles left from the original {ds_fullsize}.")
 
 
 ##########################
@@ -77,36 +70,20 @@ print(f"after filtering the dataset for usable tiles, we have left with {dataloa
 ##########################
 def save_tiles(dataloader, save_dir):
     """
-    Save tiles from multiple DataLoaders as PNG images.
-
-    Args:
-    dataloaders (list of DataLoader): List of DataLoaders to process.
-    save_dir (str): Directory path where images will be saved.
-
-    Returns:
-    None
+    Save tiles from dataloader as PNG images.
     """
 
     for batch in dataloader:
         images, _, tile_labels, _ = batch
-
-        tile_keys = tile_labels['tile_key']
-        classes = tile_labels.get('class', tile_labels['wsi_name'])
-        wsi_name = tile_labels['wsi_name']
-
-        # training tiles will be put into a directory named after their class [0,1]
-        # tiles without class (for inference) will be put into a dir named after their slide filename
-        for im, key, cl, name in zip(images, tile_keys, classes, wsi_name):
-            if type(cl) == str:
-                classlabel = str(cl)
-            else:
-                classlabel = str(cl.cpu().item())
+        # tiles will be put into a dir named after their slide filename
+        for im, key, name in zip(images, tile_labels['tile_key'], tile_labels['wsi_name']):
             filename = f"{name}_{key}.png".replace("(", "").replace(")", "").replace(",", "_").replace(" ", "")
             try:
-                save_image(im, os.path.join(save_dir, classlabel, filename))
+                # TODO: warn if dir exist / overwrite choice
+                save_image(im, os.path.join(save_dir, str(name), filename))
             except FileNotFoundError: # need to create tile subdir
-                Path(os.path.join(save_dir, classlabel)).mkdir(parents=True, exist_ok=True)
-                save_image(im, os.path.join(save_dir, classlabel, filename))
+                Path(os.path.join(save_dir, str(name))).mkdir(parents=True, exist_ok=True)
+                save_image(im, os.path.join(save_dir, str(name), filename))
     
                 
 
