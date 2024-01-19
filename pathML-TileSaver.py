@@ -31,7 +31,7 @@ h5_subdir = "h5-infer-unknown"
 ###########################
 # where to save the tiles #
 ###########################
-tile_dir = "tiles-infer-zero"
+tile_dir = "tiles-infer"
 
 
 
@@ -69,7 +69,7 @@ dataloader = torch.utils.data.DataLoader(
     full_ds, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True
 )
 
-print(f"after filtering the dataset for usable tiles, we have left with {dataloader.dataset.cummulative_sizes[-1]} tiles from the original {ds_fullsize}. Please note that this length might only be one dataset's length, so double check.")
+print(f"after filtering the dataset for usable tiles, we have left with {dataloader.dataset.cumulative_sizes[-1]} tiles from the original {ds_fullsize}.")
 
 
 ##########################
@@ -91,11 +91,11 @@ def save_tiles(dataloader, save_dir):
         images, _, tile_labels, _ = batch
 
         tile_keys = tile_labels['tile_key']
-        classes = tile_labels.get('class', ['infer'] * len(images))
+        classes = tile_labels.get('class', tile_labels['wsi_name'])
         wsi_name = tile_labels['wsi_name']
 
         # training tiles will be put into a directory named after their class [0,1]
-        # tiles without class (for inference) will be put into a dir named 'infer'
+        # tiles without class (for inference) will be put into a dir named after their slide filename
         for im, key, cl, name in zip(images, tile_keys, classes, wsi_name):
             if type(cl) == str:
                 classlabel = str(cl)
