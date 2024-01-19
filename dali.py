@@ -104,6 +104,7 @@ class ExternalInputIterator(object):
         self.files = self.files[self.data_set_len * device_id // num_gpus:
                                 self.data_set_len * (device_id + 1) // num_gpus]
         self.n = len(self.files)
+        assert self.n > 0, f"No png tiles found in dir {images_dir}"
 
     def __iter__(self):
         self.i = 0
