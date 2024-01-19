@@ -9,12 +9,10 @@
 
 # imports
 import os
-# local files
-import lib, dali
-import helpers.doublelogger as dl
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
-# pip
+import lib, dali
+import helpers.doublelogger as dl
 import time
 import torch
 import signal
@@ -23,10 +21,10 @@ from apex import amp
 from pathlib import Path
 from datetime import datetime
 from coolname import generate_slug
-from sklearn.metrics import precision_recall_fscore_support
 from torch.optim.lr_scheduler import StepLR
 from nvidia.dali.plugin.pytorch import DALIGenericIterator
 from nvidia.dali.plugin.base_iterator import LastBatchPolicy
+from sklearn.metrics import precision_recall_fscore_support
 
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
@@ -103,7 +101,6 @@ train_pipelines = [dali.cpupipe(
     shard_id=i, 
     num_shards=num_shards, 
     num_threads=16, 
-    device_id=0, 
     batch_size=batch_size
 ) for i in train_shard_ids]
 val_pipeline = dali.cpupipe(
@@ -111,7 +108,6 @@ val_pipeline = dali.cpupipe(
     shard_id=val_shard_id, 
     num_shards=num_shards, 
     num_threads=16, 
-    device_id=0, 
     batch_size=batch_size
 )
 
