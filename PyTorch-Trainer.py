@@ -11,8 +11,10 @@
 import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
-import lib, dali
+import lib
+import dali_train as dali
 import helpers.doublelogger as dl
+import copy
 import time
 import torch
 import signal
@@ -96,51 +98,59 @@ num_shards = 5
 train_shard_ids = list(range(4))  # Shards 0-3 for training
 val_shard_id = 4  # Shard 4 for validation
 
+files = []
 
-train_iter = dali.TileTrainIterator(tiles_dir, batch_size)
+# create file and label list to pass to the pipeline for label creation
+wsi_folders = [f for f in Path(tiles_dir).glob("*/")]
+assert len(wsi_folders) > 0, f"No wsi subfolders found under {tiles_dir}"
 
-pipeline = dali.pipe(
-    batch_size=batch_size, 
+for wsi_folder in wsi_folders:
+    filenames = [str(f) for f in Path(wsi_folder).glob("*.png")]
+    files.extend(filenames)
+
+labels = copy.deepcopy(files)
+
+for i, label in enumerate(labels):
+    l = label.split("/")[-1]
+    if 'a' in l:
+        labels[i] = 0
+    elif 'b' in l:
+        labels[i] = 1
+    else:
+        raise Exception(f"Error: cannot create classlabel from {label}. tile png does not have an 'a' or 'b' in filename.")
+
+
+train_pipelines = [dali.train_pipeline(
+    files=files, 
+    labels=labels,
+    shard_id=shard_seq, 
+    num_shards=num_shards,
+    batch_size=batch_size,
     num_threads=16,
-    external_data = train_iter)
+    device_id=0
+) for shard_seq in range(num_shards)]
 
-train_loader = DALIClassificationIterator(pipeline, last_batch_padded=True, last_batch_policy=LastBatchPolicy.PARTIAL)
+print("dataset read:", len(train_pipelines))
 
-val_loader = None
+val_pipeline = dali.train_pipeline(
+    files=files, 
+    labels=labels,
+    shard_id=val_shard_id, 
+    num_shards=num_shards,
+    batch_size=batch_size,
+    num_threads=16,
+    device_id=0
+)
 
-## ADD SHARDING
+train_loader = DALIClassificationIterator(train_pipelines, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
+val_loader   = DALIClassificationIterator(val_pipeline, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
 
-# # pipelines
-# train_pipelines = [dali.train_pipeline(
-#     tiles_dir, 
-#     shard_id=i, 
-#     num_shards=num_shards, 
-#     num_threads=16, 
-#     batch_size=batch_size
-# ) for i in train_shard_ids]
+dataset_size = len(labels)
+del labels, files
 
-# val_pipeline = dali.train_pipeline(
-#     tiles_dir, 
-#     shard_id=val_shard_id, 
-#     num_shards=num_shards, 
-#     num_threads=16, 
-#     batch_size=batch_size
-# )
-
-# # loaders
-# train_data = DALIGenericIterator(
-#     train_pipelines,
-#     ['data', 'label'],
-#     reader_name='Reader',
-#     last_batch_policy=LastBatchPolicy.PARTIAL
-# )
-
-# val_data = DALIGenericIterator(
-#     [val_pipeline],
-#     ['data', 'label'],
-#     reader_name='Reader',
-#     last_batch_policy=LastBatchPolicy.PARTIAL
-# )
+####################
+# model definition #
+####################
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
 # se-resnext101-32x4d paper: https://arxiv.org/pdf/1611.05431.pdf
@@ -203,11 +213,11 @@ scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
 # scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
 
 # train
-total_step = len(train_iter) # full training dataset len
+total_step = dataset_size # full training dataset len
 
 # early stop class (val_loss)
 class EarlyStopping:
-    # TODO: use a weighted metric
+    # TODO: try a weighted metric
     def __init__(self, patience=5, min_delta=0.001, verbose=False, consecutive=False):
 
         self.patience = patience
