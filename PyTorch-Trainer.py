@@ -22,9 +22,10 @@ from pathlib import Path
 from datetime import datetime
 from coolname import generate_slug
 from torch.optim.lr_scheduler import StepLR
-from nvidia.dali.plugin.pytorch import DALIGenericIterator
-from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 from sklearn.metrics import precision_recall_fscore_support
+from nvidia.dali.plugin.base_iterator import LastBatchPolicy
+from nvidia.dali.plugin.pytorch import DALIClassificationIterator
+
 
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
@@ -39,14 +40,14 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 base_dir = Path("/mnt/bigdata/placenta")
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-tiles_dir = base_dir / Path("tiles")
+tiles_dir = base_dir / Path("tiles-training")
 
 
 ##############################################################################################################
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
 ##############################################################################################################
 session_name = generate_slug(2)
-tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
+tensorboard_log_dir = base_dir / "tensorboard_testruns" / session_name
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
 writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
 
@@ -95,36 +96,51 @@ num_shards = 5
 train_shard_ids = list(range(4))  # Shards 0-3 for training
 val_shard_id = 4  # Shard 4 for validation
 
-# pipelines
-train_pipelines = [dali.cpupipe(
-    tiles_dir, 
-    shard_id=i, 
-    num_shards=num_shards, 
-    num_threads=16, 
-    batch_size=batch_size
-) for i in train_shard_ids]
-val_pipeline = dali.cpupipe(
-    tiles_dir, 
-    shard_id=val_shard_id, 
-    num_shards=num_shards, 
-    num_threads=16, 
-    batch_size=batch_size
-)
 
-# loaders
-train_data = DALIGenericIterator(
-    train_pipelines,
-    ['data', 'label'],
-    reader_name='Reader',
-    last_batch_policy=LastBatchPolicy.PARTIAL
-)
+train_iter = dali.TileTrainIterator(tiles_dir, batch_size)
 
-val_data = DALIGenericIterator(
-    [val_pipeline],
-    ['data', 'label'],
-    reader_name='Reader',
-    last_batch_policy=LastBatchPolicy.PARTIAL
-)
+pipeline = dali.pipe(
+    batch_size=batch_size, 
+    num_threads=16,
+    external_data = train_iter)
+
+train_loader = DALIClassificationIterator(pipeline, last_batch_padded=True, last_batch_policy=LastBatchPolicy.PARTIAL)
+
+val_loader = None
+
+## ADD SHARDING
+
+# # pipelines
+# train_pipelines = [dali.train_pipeline(
+#     tiles_dir, 
+#     shard_id=i, 
+#     num_shards=num_shards, 
+#     num_threads=16, 
+#     batch_size=batch_size
+# ) for i in train_shard_ids]
+
+# val_pipeline = dali.train_pipeline(
+#     tiles_dir, 
+#     shard_id=val_shard_id, 
+#     num_shards=num_shards, 
+#     num_threads=16, 
+#     batch_size=batch_size
+# )
+
+# # loaders
+# train_data = DALIGenericIterator(
+#     train_pipelines,
+#     ['data', 'label'],
+#     reader_name='Reader',
+#     last_batch_policy=LastBatchPolicy.PARTIAL
+# )
+
+# val_data = DALIGenericIterator(
+#     [val_pipeline],
+#     ['data', 'label'],
+#     reader_name='Reader',
+#     last_batch_policy=LastBatchPolicy.PARTIAL
+# )
 
 # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
 # se-resnext101-32x4d paper: https://arxiv.org/pdf/1611.05431.pdf
@@ -187,7 +203,7 @@ scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
 # scheduler = MultiStepLR(optimizer=optimizer, milestones=[10,30], gamma=0.1, verbose=True)
 
 # train
-total_step = len(train_data)
+total_step = len(train_iter) # full training dataset len
 
 # early stop class (val_loss)
 class EarlyStopping:
@@ -268,7 +284,7 @@ for epoch in range(num_epochs):
     all_labels = []
     all_predictions = []
 
-    for i, data in enumerate(train_data):
+    for i, data in enumerate(train_loader):
         images, labels_dict = data[0]['data'], data[0]['label']
         images = images.to(device).to(torch.float16)
         labels = labels_dict.squeeze(-1).long().to(device)
@@ -316,7 +332,7 @@ for epoch in range(num_epochs):
     val_all_predictions = []
 
     with torch.no_grad():
-        for data in val_data:
+        for data in val_loader:
             images, labels_dict = data[0]['data'], data[0]['label']
             images = images.to(device).to(torch.float16)
             labels = labels_dict.squeeze(-1).long().to(device)
@@ -331,7 +347,7 @@ for epoch in range(num_epochs):
             val_all_labels.extend(labels.cpu().numpy())
             val_all_predictions.extend(predicted.cpu().numpy())
 
-    val_epoch_loss = val_loss / len(val_data)
+    val_epoch_loss = val_loss / len(val_loader)
     val_epoch_acc = val_correct / val_total
     val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
