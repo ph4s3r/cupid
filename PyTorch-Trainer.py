@@ -11,9 +11,11 @@
 import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
+# local
 import lib
 import dali_train as dali
 import helpers.doublelogger as dl
+# pip
 import copy
 import time
 import torch
@@ -130,8 +132,6 @@ train_pipelines = [dali.train_pipeline(
     device_id=0
 ) for shard_seq in range(num_shards)]
 
-print("dataset read:", len(train_pipelines))
-
 val_pipeline = dali.train_pipeline(
     files=files, 
     labels=labels,
@@ -146,6 +146,7 @@ train_loader = DALIClassificationIterator(train_pipelines, reader_name="Reader",
 val_loader   = DALIClassificationIterator(val_pipeline, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
 
 dataset_size = len(labels)
+print("dataset size:", dataset_size)
 del labels, files
 
 ####################
