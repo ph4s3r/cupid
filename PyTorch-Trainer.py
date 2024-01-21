@@ -275,25 +275,19 @@ training_start = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S
 log.info(f"training started at {training_start}")
 
 hyperparams_tensorboard = {
-  "scheduler": {
+      "model": "se_resnext101_32x4d",
       "scheduler_type": str(scheduler), 
       "scheduler.step_size": str(scheduler.step_size),
       "scheduler.gamma": str(scheduler.gamma),
-  },
-  "optimizer": {
       "optimizer": str(optimizer),
-  },
-  "amp": {
-      "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options)
-  },
-  "others": {
+      "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options),
       "batch_size": str(batch_size),
       "training_started": str(training_start)
-  },    
-  "comment": "trying to get out of volatile acc",
 }
 
+writer.add_hparams(hyperparams_tensorboard, {})
 writer.add_text("hyperparameters", lib.pretty_json(hyperparams_tensorboard))
+writer.add_text("comment", user_input)
 
 for epoch in range(num_epochs):
 
