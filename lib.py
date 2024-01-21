@@ -67,13 +67,7 @@ transforms = v2.Compose( # don't change the order without knowing exactly what y
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
         v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
-        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.RandomApply(
-            transforms=[
-                v2.ColorJitter(brightness=.3, hue=.15, saturation=.2, contrast=.3)
-            ]
-        , p=0.3),
-        v2.Resize(size=224, antialias=True),                   # same size as the tile im
+        v2.Lambda(lambda x: x / 255.0)                          # convert pixel values to [0, 1] range
     ]
 )
 
@@ -83,7 +77,6 @@ maskforms = v2.Compose(
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
         v2.ToDtype(torch.uint8),                                # float to int
-        v2.Resize(size=224, antialias=False)                    # same size as the tile im
     ]
 )
 

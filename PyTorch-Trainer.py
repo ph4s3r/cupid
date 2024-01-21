@@ -171,7 +171,6 @@ del labels, files
 model = se_resnext101_32x4d(
     pretrained=True
 )
-# default input image dim: 224
 
 ##################
 # begin training #
