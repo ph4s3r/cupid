@@ -14,7 +14,7 @@ from nvidia.dali import pipeline_def
 from nvidia.dali.pipeline import Pipeline
 
 @pipeline_def
-def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=True, pad_last_batch=False):
+def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pad_last_batch=False):
     """
     training pipeline: creates class based on the folder name (dir named '0' will assign '0' class etc..)
 
