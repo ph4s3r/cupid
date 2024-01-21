@@ -153,10 +153,12 @@ class EarlyStopping:
             if self.consecutive:    # stopping only on consecutive <patience> number of degradation epochs
                 self.counter = 0 
         if self.verbose and self.epoch > 1:
-            log.info(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
+            print(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
         self.last_val_loss = val_loss
         if self.early_stop:
-            log.info("Early stop condition reached, stopping training")
+            print("Early stop condition reached, stopping training")
             return True
         else:
             return False
+        
+        
