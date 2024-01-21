@@ -13,6 +13,7 @@ if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # local
 import lib
+import timedinput
 import dali_train as dali
 import helpers.doublelogger as dl
 # pip
@@ -46,14 +47,22 @@ model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 tiles_dir = base_dir / Path("tiles-training")
 
-
 ##############################################################################################################
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
 ##############################################################################################################
 session_name = generate_slug(2)
-tensorboard_log_dir = base_dir / "tensorboard_testruns" / session_name
+tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
+# user can customize the tensorboard folder
+user_input = timedinput.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
+user_input = timedinput.sanitize(user_input)
+print(f"Adding comment to tensorboard data: {user_input}")
+if user_input is not None:
+    if user_input != '':
+        session_name  = session_name + "-" + user_input
+        tensorboard_log_dir = base_dir / "tensorboard_data" / Path(session_name)
+
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
-writer = SummaryWriter(log_dir=tensorboard_log_dir, comment=session_name)
+writer = SummaryWriter(log_dir=tensorboard_log_dir)
 
 
 #############################################
@@ -128,6 +137,7 @@ train_pipelines = [dali.train_pipeline(
     shard_id=shard_seq, 
     num_shards=num_shards,
     batch_size=batch_size,
+    stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
     num_threads=16,
     device_id=0
 ) for shard_seq in range(num_shards)]
@@ -138,6 +148,7 @@ val_pipeline = dali.train_pipeline(
     shard_id=val_shard_id, 
     num_shards=num_shards,
     batch_size=batch_size,
+    stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
     num_threads=16,
     device_id=0
 )
@@ -332,7 +343,7 @@ for epoch in range(num_epochs):
     writer.add_scalar('params/learning_rate', latest_lr, epoch)
 
     # show stats at the end of epoch
-    log.info(f"Epoch {epoch+1}/{num_epochs} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
+    log.info(f"Training - Epoch {epoch+1}/{num_epochs} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
     # validation
     model.eval()
 
@@ -380,7 +391,7 @@ for epoch in range(num_epochs):
     scheduler.step()
 
     # save model checkpoint and data (epoch)
-    if epoch > 2 or interrupted:
+    if epoch > 5 or interrupted:
         checkpoint_file = str(model_checkpoint_dir)+"/"+session_name+str(epoch)+".ckpt"
         save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file)
 
