@@ -5,13 +5,12 @@
 # Data loading functions, speedtest & visualisation                                                      #
 ##########################################################################################################
 
-import torch
-import numpy as np
+import copy
 from pathlib import Path
-from random import shuffle
 import nvidia.dali.fn as fn
 from nvidia.dali import pipeline_def
-from nvidia.dali.pipeline import Pipeline
+from nvidia.dali.plugin.base_iterator import LastBatchPolicy
+from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 
 @pipeline_def
 def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pad_last_batch=False):
@@ -118,3 +117,65 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
 #     next = __next__
 
 
+def dataloaders(tiles_dir, batch_size):
+
+    ########################
+    # read tiles with DALI #
+    ########################
+
+    # we make a 80-20 split by using 5 shards (splitting the images to 5 batches: each shard number refers to 20% of the data)
+    num_shards = 5
+    train_shard_ids = list(range(4))  # Shards 0-3 for training
+    val_shard_id = 4  # Shard 4 for validation
+
+    files = []
+
+    # create file and label list to pass to the pipeline for label creation
+    wsi_folders = [f for f in Path(tiles_dir).glob("*/")]
+    assert len(wsi_folders) > 0, f"No wsi subfolders found under {tiles_dir}"
+
+    for wsi_folder in wsi_folders:
+        filenames = [str(f) for f in Path(wsi_folder).glob("*.png")]
+        files.extend(filenames)
+
+    labels = copy.deepcopy(files)
+
+    for i, label in enumerate(labels):
+        l = label.split("/")[-1]
+        if 'a' in l:
+            labels[i] = 0
+        elif 'b' in l:
+            labels[i] = 1
+        else:
+            raise Exception(f"Error: cannot create classlabel from {label}. tile png does not have an 'a' or 'b' in filename.")
+
+
+    train_pipelines = [train_pipeline(
+        files=files, 
+        labels=labels,
+        shard_id=shard_seq, 
+        num_shards=num_shards,
+        batch_size=batch_size,
+        stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
+        num_threads=16,
+        device_id=0
+    ) for shard_seq in range(num_shards)]
+
+    val_pipeline = train_pipeline(
+        files=files, 
+        labels=labels,
+        shard_id=val_shard_id, 
+        num_shards=num_shards,
+        batch_size=batch_size,
+        stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
+        num_threads=16,
+        device_id=0
+    )
+
+    train_loader = DALIClassificationIterator(train_pipelines, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
+    val_loader   = DALIClassificationIterator(val_pipeline, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
+
+    dataset_size = len(labels)
+    print(f"DALI loaded a dataset of size {dataset_size} successfully")
+
+    return train_loader, val_loader, dataset_size
