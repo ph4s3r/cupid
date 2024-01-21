@@ -16,14 +16,22 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 - **pathML-placenta-TissueDetection.ipynb**: reading wsi's and producing h5path files with pathml
 
+### saving tiles from h5 to png images
+
+- **pathML-TileSaver.py**: read h5s and write image files
+
 ### training
 
 - **PyTorch-Trainer**: training!
 - NOTE: in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
 
+### fine-tuning / transfer learning (continue training from a checkpoint)
+
+- **PyTorch-FineTuner**: load checkpoint and session and continue training
+
 ### evaluation
 
-- **PyTorch-Evaluate**: set model type, saved weights, session name and test data to get accuracy, roc/auc graph, top false negative images and write data to tensorboard
+- **slide-infer.ipynb**: set model type, saved weights, session name and test data to get accuracy, roc/auc graph, top false negative images and write data to tensorboard
 
 ## auxilliary functions
 
@@ -37,16 +45,11 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 # labeling
 
 - class labels are processed from wsi filenames
-- tile keys are inserted to all 
+- tile keys are also processed from wsi filenames
 
 # TODOs
 
-- visual inference + heatmap
 - feature extraction
-- add double logger
-- try a DSF-CNN instead of over-augmenting (rotation/flip-invariant network) https://paperswithcode.com/paper/dense-steerable-filter-cnns-for-exploiting
-- DSF-CNN implementation: https://github.com/simongraham/dsf-cnn
-- also try P4M-DenseNet which performed best on PCAM (2018) https://arxiv.org/abs/1806.03962
 
 # notes
 
