@@ -1,10 +1,25 @@
 import json
+import time
 import torch
 import pathml
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from torchvision.transforms import v2
+
+def timeit(func):
+    """
+    basic timer decorator
+    """    
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print('Function "{}" completed in {:.0f}m {:.0f}s'.format(func.__name__, elapsed_time // 60, elapsed_time % 60))
+        return result
+    return wrapper
+
 
 def pretty_json(hp):
   json_hp = json.dumps(hp, indent=2)
