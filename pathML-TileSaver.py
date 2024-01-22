@@ -17,7 +17,7 @@ import time
 import torch
 from pathlib import Path
 from datetime import datetime
-from torchvision.utils import save_image
+from torchvision.io import write_png
 
 
 ##############################
@@ -55,10 +55,10 @@ def save_tiles(dataloader, save_dir):
         for im, key, name in zip(images, tile_labels['tile_key'], tile_labels['wsi_name']):
             filename = f"{name}_{key}.png".replace("(", "").replace(")", "").replace(",", "_").replace(" ", "")
             try:
-                save_image(im, os.path.join(save_dir, str(name), filename))
-            except FileNotFoundError: # need to create tile subdir
+                write_png(im, os.path.join(save_dir, str(name), filename), 0)
+            except RuntimeError: # need to create tile subdir
                 Path(os.path.join(save_dir, str(name))).mkdir(parents=True, exist_ok=True)
-                save_image(im, os.path.join(save_dir, str(name), filename))
+                write_png(im, os.path.join(save_dir, str(name), filename), 0)
 
 
 #########################################################################

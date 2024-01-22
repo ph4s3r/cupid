@@ -87,9 +87,9 @@ def vizBatch(im, tile_masks, tile_labels = None) -> None:
 transforms = v2.Compose( # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
     [
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
-        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
-        v2.Lambda(lambda x: x / 255.0)                          # convert pixel values to [0, 1] range
+        v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
+        v2.ToDtype(torch.uint8, scale=True),                    
     ]
 )
 
