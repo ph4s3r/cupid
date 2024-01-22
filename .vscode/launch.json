@@ -7,6 +7,17 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Current File with profiler",
+            "type": "python",
+            "request": "launch",
+            "module": "cProfile",
+            "args": [
+                "-o",
+                "/mnt/bigdata/tmp/tmp.prof",
+                "${file}"
+            ]
         }
     ]
 }
