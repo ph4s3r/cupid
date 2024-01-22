@@ -5,6 +5,7 @@ import pathml
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+from multiprocessing import Pool
 from torchvision.transforms import v2
 
 def timeit(func):
@@ -101,38 +102,40 @@ maskforms = v2.Compose(
     ]
 )
 
-
-##########################################################
-# drop tiles covered less than min_mask_coverage by mask #
-##########################################################
-min_mask_coverage = 0.35
 class TransformedPathmlTileSet(pathml.ml.TileDataset):
     """
     custom class to drop tiles covered less than min_mask_coverage by mask
     """
     def __init__(self, h5file):
         super().__init__(h5file)
+        self.initial_length = super().__len__()
+        self.min_mask_coverage = 0.35
         self.dimx = self.tile_shape[0]
         self.dimy = self.tile_shape[1]
         self.usable_indices = self._find_usable_tiles()
-        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
+        self.file_label = Path(self.file_path).stem
+
+    def _compute_coverage(self, idx):
+        _, tile_masks, _, _ = super().__getitem__(idx)
+        return np.sum(tile_masks == 127.)
 
     def _find_usable_tiles(self):
-        usable_indices = []
-        threshold_percent = min_mask_coverage
-        threshold_val = int(self.dimx * self.dimy * threshold_percent)
         initial_length = super().__len__()
+        threshold_percent = self.min_mask_coverage
+        threshold_val = int(self.dimx * self.dimy * threshold_percent)
 
-        for idx in range(initial_length):
-            _, tile_masks, _, _ = super().__getitem__(idx)
-            coverage = np.sum(tile_masks == 127.)
-            if coverage >= threshold_val:
-                usable_indices.append(idx)
+        with Pool() as pool:
+            coverage_values = pool.map(self._compute_coverage, range(initial_length))
 
-        return usable_indices
+        usable_indices = np.where(np.array(coverage_values) >= threshold_val)[0]
 
+        return usable_indices.tolist()
+    
     def __len__(self):
         return len(self.usable_indices)
+
+    def original_length(self):
+        return self.initial_length
 
     def __getitem__(self, idx):
         actual_idx = self.usable_indices[idx]
