@@ -17,7 +17,8 @@ import time
 import torch
 from pathlib import Path
 from datetime import datetime
-from torchvision.io import write_png
+from concurrent.futures import ThreadPoolExecutor
+from torchvision.io import write_jpeg
 
 
 ##############################
@@ -40,25 +41,25 @@ batch_size = 512
 tile_dir = "tiles-train-500"
 
 
-##########################
-# function to save tiles #
-##########################
+def save_tile(image, name, key, save_dir):
+    filename = f"{name}_{key}.jpg".replace("(", "").replace(")", "").replace(",", "_").replace(" ", "")
+    tile_path = os.path.join(save_dir, str(name))
+    Path(tile_path).mkdir(parents=True, exist_ok=True)
+    write_jpeg(image, os.path.join(tile_path, filename), 100)
+
 @timeit
 def save_tiles(dataloader, save_dir):
     """
-    Save tiles from dataloader as PNG images.
+    Save tiles from dataloader as PNG images using parallel processing.
     """
-
-    for batch in dataloader:
-        images, _, tile_labels, _ = batch
-        # tiles will be put into a dir named after their slide filename
-        for im, key, name in zip(images, tile_labels['tile_key'], tile_labels['wsi_name']):
-            filename = f"{name}_{key}.png".replace("(", "").replace(")", "").replace(",", "_").replace(" ", "")
-            try:
-                write_png(im, os.path.join(save_dir, str(name), filename), 0)
-            except RuntimeError: # need to create tile subdir
-                Path(os.path.join(save_dir, str(name))).mkdir(parents=True, exist_ok=True)
-                write_png(im, os.path.join(save_dir, str(name), filename), 0)
+    with ThreadPoolExecutor() as executor:
+        for batch in dataloader:
+            images, _, tile_labels, _ = batch
+            futures = [executor.submit(save_tile, im, name, key, save_dir) 
+                       for im, name, key in zip(images, tile_labels['wsi_name'], tile_labels['tile_key'])]
+            # wait for all futures to complete (optional, remove if not needed)
+            for future in futures:
+                future.result()
 
 
 #########################################################################
