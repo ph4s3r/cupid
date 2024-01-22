@@ -26,15 +26,19 @@ def pretty_json(hp):
   return "".join("\t" + line for line in json_hp.splitlines(True))
 
 def human_readable_size(size, decimal_places=2):
-    """Convert a size in bytes to a human-readable format."""
+    """
+    Convert a size in bytes to a human-readable format.
+    """
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size < 1024.0 or unit == "TB":
             break
         size /= 1024.0
     return f"{size:.{decimal_places}f} {unit}"
 
-def print_file_sizes(directory):
-    """List files and their sizes in a directory."""
+def print_file_sizes(directory) -> None:
+    """
+    List files and their sizes in a directory.
+    """
     p = Path(directory)
     print("file sizes in directory", p)
     if not p.is_dir():
@@ -47,8 +51,10 @@ def print_file_sizes(directory):
 
 
 # plot a batch of tiles with masks
-def vizBatch(im, tile_masks, tile_labels = None):
-    # create a grid of subplots
+def vizBatch(im, tile_masks, tile_labels = None) -> None:
+    """
+    Create a grid of subplots
+    """
     _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
     axes = axes.flatten()
 
@@ -101,6 +107,9 @@ maskforms = v2.Compose(
 ##########################################################
 min_mask_coverage = 0.35
 class TransformedPathmlTileSet(pathml.ml.TileDataset):
+    """
+    custom class to drop tiles covered less than min_mask_coverage by mask
+    """
     def __init__(self, h5file):
         super().__init__(h5file)
         self.dimx = self.tile_shape[0]
