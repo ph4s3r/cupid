@@ -49,7 +49,14 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # TODOs
 
+- ray-tune
 - feature extraction
+- separate config from code: with e.g. Hydra or ConfigArgParse
+- switch to pytorch amp from APEX amp, because it is deprecated
+- study se_resnext101_32x4d more to fine-tune
+- think about segmentation -> https://github.com/ph4s3r/clinical/discussions/4
+- test in different env like Azure (just make sure the requirements.txt / conda env yaml is complete)
+- test out different image sizes / batch
 
 # notes
 
