@@ -47,6 +47,8 @@ def extract_tiles(wsi, lvl, tile_size):
     print("\tlevel_count: ", openslide_wsi.level_count)
     print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples)
     print("\tlevel_dimensions (h,w): ", openslide_wsi.level_dimensions)
+    print("\r\n")
+
 
     st = time.time()
     image_pil = openslide_wsi.read_region(
@@ -56,13 +58,16 @@ def extract_tiles(wsi, lvl, tile_size):
         )
     print(f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
 
+
     st = time.time()
     image_nparray = cv2.cvtColor(
         np.asarray(image_pil), cv2.COLOR_RGBA2RGB
         ).astype(np.uint8)
     print(f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
 
+
     im = Tile(image_nparray, coords=(0, 0), name="testregion", slide_type=types.HE)
+
 
     st = time.time()
     TissueDetectionHE(
@@ -104,8 +109,10 @@ def extract_tiles(wsi, lvl, tile_size):
                         f'{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg'
                         )
                 tilecounter += 1
-    
-    print(f"pil_image.save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
+
+
+    print(f"PIL Image save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
+    print("\r\n")
     openslide_wsi.close()
     return tilecounter
 
