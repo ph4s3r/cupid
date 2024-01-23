@@ -51,15 +51,36 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
     print("\tlevel_dimensions (h,w): ", openslide_wsi.slide.slide.level_dimensions)
     print("\r\n")
 
+    # width of image e.g. 20001
+    w = openslide_wsi.slide.slide.level_dimensions[lvl][1]
+    h = openslide_wsi.slide.slide.level_dimensions[lvl][0]
+
+    # half width e.g. 10000
+    x1 = int(w // 2)
+    y1 = int(h // 2)
+    # another half 10001
+    x2 = int(w - x1)
+    y2 = int(w - y1)
+
     st = time.time()
-    region = openslide_wsi.slide.extract_region(
+    # only the left half 
+    region1 = openslide_wsi.slide.extract_region(
         location=(0, 0),
-        size=(openslide_wsi.slide.slide.level_dimensions[lvl][1], openslide_wsi.slide.slide.level_dimensions[lvl][0]),
+        size=(x1, y1),
         level=lvl
         )
-    print(f"pathml extract_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+    print(f"pathml extract_region() 1 {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
-    im = Tile(region, coords=(0, 0), name="testregion", slide_type=types.HE)
+    # st = time.time()
+    # region2 = openslide_wsi.slide.extract_region(
+    #     location=(x1+1, 0),
+    #     size=(x2, openslide_wsi.slide.slide.level_dimensions[lvl][0]),
+    #     level=lvl
+    #     )
+    # print(f"pathml extract_region() 2 {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+
+    im1 = Tile(region1, coords=(0, 0), name="testregion", slide_type=types.HE)
+    # im2 = Tile(region2, coords=(0, 0), name="testregion", slide_type=types.HE)
 
     st = time.time()
     TissueDetectionHE(
@@ -69,17 +90,17 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
         outer_contours_only=False,
         max_hole_size=10000,
         use_saturation=True,
-    ).apply(im)
+    ).apply(im1)
     print(
         f"TissueDetectionHE took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
 
     st = time.time()
-    im.masks["tissue"][im.masks["tissue"] == 127] = 1  # convert 127s to 1s
-    im.image *= np.expand_dims(im.masks["tissue"], 2)  # element wise in-place mm
+    im1.masks["tissue"][im1.masks["tissue"] == 127] = 1  # convert 127s to 1s
+    im1.image *= np.expand_dims(im1.masks["tissue"], 2)  # element wise in-place mm
 
-    maxx = ((im.shape[0] // tile_size) * tile_size) - tile_size
-    maxy = ((im.shape[1] // tile_size) * tile_size) - tile_size
+    maxx = ((im1.shape[0] // tile_size) * tile_size) - tile_size
+    maxy = ((im1.shape[1] // tile_size) * tile_size) - tile_size
 
     tilecounter = 0
     tile_mask_sum_max = 0
@@ -91,7 +112,7 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
         for tile_y_start in range(0, maxy, tile_size):
             tile_x_end = tile_x_start + tile_size
             tile_y_end = tile_y_start + tile_size
-            tile_mask = im.masks["tissue"][
+            tile_mask = im1.masks["tissue"][
                 tile_x_start:tile_x_end, tile_y_start:tile_y_end
             ]
             tile_mask_sum = np.sum(tile_mask)
@@ -101,7 +122,7 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
                 if tile_mask_sum_max < tile_mask_sum:
                     tile_mask_sum_max = tile_mask_sum
                 Image.fromarray(
-                    im.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]
+                    im1.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]
                 ).save(
                     f"{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg"
                 )
