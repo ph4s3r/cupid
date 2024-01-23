@@ -14,11 +14,12 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 ### preprocessing 
 
-- **pathML-placenta-TissueDetection.ipynb**: reading wsi's and producing h5path files with pathml
+- **TileExtractor.py**: reading tiff with openslide and saving usable tiles to jpeg (3+ times faster, no h5 created compared to pathml pipeline)
+- **pathML-placenta-TissueDetection.ipynb**: (legacy) reading wsi's and producing h5path files with pathml
 
 ### saving tiles from h5 to png images
 
-- **pathML-TileSaver.py**: read h5s and write image files
+- **pathML-TileSaver.py**: read h5s and writes usable tiles to jpeg
 
 ### training
 
