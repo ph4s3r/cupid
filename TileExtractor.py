@@ -1,14 +1,14 @@
 ##########################################################################################################
 # Author: Peter Karacsonyi                                                                               #
 # Last updated: 2024 jan 23                                                                              #
-# Input: Creates tiles from a wsi                                                                        #
+# Input: write jpeg tiles from a wsi                                                                     #
 ##########################################################################################################
 
 ##############
 # IO folders #
 ##############
 wsi_folder = "/mnt/bigdata/placenta/wsitest"  # reads all wsi files in folder
-out_folder = "/mnt/bigdata/placenta/tajlz"  # creates tiles in a directory with wsi name
+out_folder = "/mnt/bigdata/placenta/tilestest"  # creates tiles in a directory with wsi name
 
 
 ##########
@@ -27,8 +27,7 @@ import time
 import numpy as np
 from PIL import Image
 from pathlib import Path
-from libtiff import TIFF
-from pathml.core import Tile, types
+from pathml.core import Tile, types, HESlide
 from pathml.preprocessing import TissueDetectionHE
 
 
@@ -37,44 +36,30 @@ wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 #############################
 # function to extract tiles #
 #############################
-
-
 def extract_tiles(wsi, lvl, tile_size, threshold):
 
+    openslide_wsi = HESlide(
+        wsi,
+        backend="openslide",
+        slide_type=types.HE,
+    )
+
+    print("shape and resolution details of the input file: ")
+    print("\tlevel 0 shape: ", openslide_wsi.shape)
+    print("\tlevel_count: ", openslide_wsi.slide.slide.level_count)
+    print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.slide.slide.level_downsamples)
+    print("\tlevel_dimensions (h,w): ", openslide_wsi.slide.slide.level_dimensions)
+    print("\r\n")
+
     st = time.time()
-    tif = TIFF.open(wsi, mode='r')
-    image_nparray = tif.read_image()
-    print(f"libtiff read to nparray took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+    region = openslide_wsi.slide.extract_region(
+        location=(0, 0),
+        size=(openslide_wsi.slide.slide.level_dimensions[lvl][1], openslide_wsi.slide.slide.level_dimensions[lvl][0]),
+        level=lvl
+        )
+    print(f"pathml extract_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
-    # openslide_wsi = openslide.OpenSlide(wsi)
-
-    # print("shape and resolution details of the input file: ")
-    # print("\tshape: ", openslide_wsi.dimensions)
-    # print("\tlevel_count: ", openslide_wsi.level_count)
-    # print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples)
-    # print("\tlevel_dimensions (h,w): ", openslide_wsi.level_dimensions)
-    # print("\r\n")
-
-    # st = time.time()
-    # image_pil = openslide_wsi.read_region(
-    #     location=(0, 0),
-    #     size=(
-    #         openslide_wsi.level_dimensions[lvl][1],
-    #         openslide_wsi.level_dimensions[lvl][0],
-    #     ),
-    #     level=lvl,
-    # )
-    # print(f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
-
-    # st = time.time()
-    # image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
-    #     np.uint8
-    # )
-    # print(
-    #     f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
-    # )
-
-    im = Tile(image_nparray, coords=(0, 0), name="testregion", slide_type=types.HE)
+    im = Tile(region, coords=(0, 0), name="testregion", slide_type=types.HE)
 
     st = time.time()
     TissueDetectionHE(
@@ -126,7 +111,6 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
         f"PIL Image save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
     print("\r\n")
-    # openslide_wsi.close()
     return tilecounter
 
 
@@ -134,6 +118,11 @@ print(f"**************************************************")
 print(f"***************** TILE EXTRACTOR *****************")
 print(f"**************************************************")
 print("\r\n")
+
+#######
+# run #
+#######
+
 for wsi in wsi_paths:
     print(
         f"************ Processing {wsi.name} on resolution level {resolution} ************"
