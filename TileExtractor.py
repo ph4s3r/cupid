@@ -14,8 +14,9 @@ out_folder = "/mnt/bigdata/placenta/tajlz"  # creates tiles in a directory with 
 ##########
 # Config #
 ##########
-wsi_resolution_level = 2  # 0 is the highest resolution, for available resolutions please use the index of level_downsamples (will be printed below)
-tile_size = 500
+resolution = 1      # 0 is the highest wsi resolution level, for available lvls see the index of level_downsamples (will be printed below)
+coverage   = 0.35   # percentage the mask should cover the tile to avoid getting dropped
+tile_size  = 500
 
 
 ###########
@@ -38,7 +39,7 @@ wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 #############################
 
 
-def extract_tiles(wsi, lvl, tile_size):
+def extract_tiles(wsi, lvl, tile_size, threshold):
     openslide_wsi = openslide.OpenSlide(wsi)
 
     print("shape and resolution details of the input file: ")
@@ -58,7 +59,7 @@ def extract_tiles(wsi, lvl, tile_size):
         level=lvl,
     )
     print(
-        f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s"
+        f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
 
     st = time.time()
@@ -66,7 +67,7 @@ def extract_tiles(wsi, lvl, tile_size):
         np.uint8
     )
     print(
-        f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s"
+        f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
 
     im = Tile(image_nparray, coords=(0, 0), name="testregion", slide_type=types.HE)
@@ -81,7 +82,7 @@ def extract_tiles(wsi, lvl, tile_size):
         use_saturation=True,
     ).apply(im)
     print(
-        f"TissueDetectionHE took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s"
+        f"TissueDetectionHE took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
 
     st = time.time()
@@ -95,7 +96,8 @@ def extract_tiles(wsi, lvl, tile_size):
     tile_mask_sum_max = 0
     wsiname = openslide_wsi._filename.stem
     Path(out_folder + "/" + wsiname).mkdir(parents=True, exist_ok=True)
-    coverage = 0.35 * tile_size * tile_size
+    coverage = threshold * tile_size * tile_size
+
     for tile_x_start in range(0, maxx, tile_size):
         for tile_y_start in range(0, maxy, tile_size):
             tile_x_end = tile_x_start + tile_size
@@ -117,7 +119,7 @@ def extract_tiles(wsi, lvl, tile_size):
                 tilecounter += 1
 
     print(
-        f"PIL Image save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s"
+        f"PIL Image save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
     print("\r\n")
     openslide_wsi.close()
@@ -130,12 +132,12 @@ print(f"**************************************************")
 print("\r\n")
 for wsi in wsi_paths:
     print(
-        f"************ Processing {wsi.name} on resolution level {wsi_resolution_level} ************"
+        f"************ Processing {wsi.name} on resolution level {resolution} ************"
     )
     print("\r\n")
     start_time = time.time()
-    wsi_tilecount = extract_tiles(wsi, lvl=wsi_resolution_level, tile_size=tile_size)
+    wsi_tilecount = extract_tiles(wsi, lvl=resolution, tile_size=tile_size, threshold=coverage)
     print(
-        f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s ************"
+        f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.0f}s ************"
     )
     print("\r\n")
