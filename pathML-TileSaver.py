@@ -76,8 +76,8 @@ tile_dir = Path(base_dir) / Path(tile_dir)
 tile_dir.mkdir(parents=True, exist_ok=True)
 
 tiles_exist_for = [f.stem for f in tile_dir.iterdir() if f.is_dir()]
-
-print(f"WSI(s) {tiles_exist_for} will be skipped due to existing output folders. \r\n")
+if len(tiles_exist_for) > 0:
+    print(f"WSI(s) {tiles_exist_for} will be skipped due to existing output folders. \r\n")
 
 for h5file in h5files:
     if h5file.stem not in tiles_exist_for:
