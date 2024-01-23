@@ -14,7 +14,7 @@ out_folder = "/mnt/bigdata/placenta/tajlz"  # creates tiles in a directory with 
 ##########
 # Config #
 ##########
-resolution = 1      # 0 is the highest wsi resolution level, for available lvls see the index of level_downsamples (will be printed below)
+resolution = 0      # 0 is the highest wsi resolution level, for available lvls see the index of level_downsamples (will be printed below)
 coverage   = 0.35   # percentage the mask should cover the tile to avoid getting dropped
 tile_size  = 500
 
@@ -22,12 +22,12 @@ tile_size  = 500
 ###########
 # imports #
 ###########
-import cv2
+import os # os._exit(0)
 import time
-import openslide
 import numpy as np
 from PIL import Image
 from pathlib import Path
+from libtiff import TIFF
 from pathml.core import Tile, types
 from pathml.preprocessing import TissueDetectionHE
 
@@ -40,35 +40,39 @@ wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 
 
 def extract_tiles(wsi, lvl, tile_size, threshold):
-    openslide_wsi = openslide.OpenSlide(wsi)
-
-    print("shape and resolution details of the input file: ")
-    print("\tshape: ", openslide_wsi.dimensions)
-    print("\tlevel_count: ", openslide_wsi.level_count)
-    print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples)
-    print("\tlevel_dimensions (h,w): ", openslide_wsi.level_dimensions)
-    print("\r\n")
 
     st = time.time()
-    image_pil = openslide_wsi.read_region(
-        location=(0, 0),
-        size=(
-            openslide_wsi.level_dimensions[lvl][1],
-            openslide_wsi.level_dimensions[lvl][0],
-        ),
-        level=lvl,
-    )
-    print(
-        f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
-    )
+    tif = TIFF.open(wsi, mode='r')
+    image_nparray = tif.read_image()
+    print(f"libtiff read to nparray took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
-    st = time.time()
-    image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
-        np.uint8
-    )
-    print(
-        f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
-    )
+    # openslide_wsi = openslide.OpenSlide(wsi)
+
+    # print("shape and resolution details of the input file: ")
+    # print("\tshape: ", openslide_wsi.dimensions)
+    # print("\tlevel_count: ", openslide_wsi.level_count)
+    # print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples)
+    # print("\tlevel_dimensions (h,w): ", openslide_wsi.level_dimensions)
+    # print("\r\n")
+
+    # st = time.time()
+    # image_pil = openslide_wsi.read_region(
+    #     location=(0, 0),
+    #     size=(
+    #         openslide_wsi.level_dimensions[lvl][1],
+    #         openslide_wsi.level_dimensions[lvl][0],
+    #     ),
+    #     level=lvl,
+    # )
+    # print(f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+
+    # st = time.time()
+    # image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
+    #     np.uint8
+    # )
+    # print(
+    #     f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
+    # )
 
     im = Tile(image_nparray, coords=(0, 0), name="testregion", slide_type=types.HE)
 
@@ -94,7 +98,7 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
 
     tilecounter = 0
     tile_mask_sum_max = 0
-    wsiname = openslide_wsi._filename.stem
+    wsiname = wsi.stem
     Path(out_folder + "/" + wsiname).mkdir(parents=True, exist_ok=True)
     coverage = threshold * tile_size * tile_size
 
@@ -122,7 +126,7 @@ def extract_tiles(wsi, lvl, tile_size, threshold):
         f"PIL Image save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
     )
     print("\r\n")
-    openslide_wsi.close()
+    # openslide_wsi.close()
     return tilecounter
 
 
