@@ -7,7 +7,7 @@
 ##############
 # IO folders #
 ##############
-wsi_folder = "/mnt/bigdata/placenta/wsi_biggest"  # reads all wsi files in folder
+wsi_folder = "/mnt/bigdata/placenta/wsitest"  # reads all wsi files in folder
 out_folder = "/mnt/bigdata/placenta/tilestest"  # creates tiles in a directory with wsi name
 
 
@@ -22,20 +22,19 @@ tile_size  = 500
 ###########
 # imports #
 ###########
-import os # os._exit(0)
 import cv2
-import openslide
 import time
+import openslide
 import numpy as np
 from PIL import Image
 from pathlib import Path
-from pathml.core import Tile, types, HESlide
+from pathml.core import Tile, types
 from pathml.preprocessing import TissueDetectionHE
 
 
-wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
-
-
+#####################################################################################
+# operations on a numpy.ndarray region: pathML TissueDetectionHE and PIL Image save #
+#####################################################################################
 def TissueDetectandSave(image_nparray, coverage, i):
     im = Tile(image_nparray, coords=(0, 0), name="quartertile", slide_type=types.HE)
 
@@ -48,7 +47,7 @@ def TissueDetectandSave(image_nparray, coverage, i):
         max_hole_size=10000,
         use_saturation=True,
     ).apply(im)
-    print(f"TissueDetectionHE [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+    print(f"\tTissueDetectionHE [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
     st = time.time()
     im.masks["tissue"][im.masks["tissue"] == 127] = 1  # convert 127s to 1s
@@ -60,9 +59,11 @@ def TissueDetectandSave(image_nparray, coverage, i):
     tilecounter = 0
     tile_x_max = 0
     tile_y_max = 0
+    tiles_checked = 0
     wsiname = wsi.stem
     Path(out_folder + "/" + wsiname).mkdir(parents=True, exist_ok=True)
-    coverage = coverage * tile_size * tile_size
+    # can be 250.000 maximum (500x500) x value of 1 where mask is covering the image
+    threshold = coverage * tile_size * tile_size
 
     for tile_x_start in range(0, maxx, tile_size):
         for tile_y_start in range(0, maxy, tile_size):
@@ -71,10 +72,7 @@ def TissueDetectandSave(image_nparray, coverage, i):
             tile_mask = im.masks["tissue"][
                 tile_x_start:tile_x_end, tile_y_start:tile_y_end
             ]
-            tile_mask_sum = np.sum(tile_mask)
-            if tile_mask_sum < coverage:
-                continue
-            else:
+            if np.sum(tile_mask) > threshold:
                 if tile_x_max < tile_x_start:
                     tile_x_max = tile_x_start
                 if tile_y_max < tile_y_start:
@@ -85,21 +83,20 @@ def TissueDetectandSave(image_nparray, coverage, i):
                     f"{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg"
                 )
                 tilecounter += 1
-    print(f"DEBUG [{i}]: tile_x_max: {tile_x_max}, tile_y_max: {tile_y_max}, tiles: {tilecounter}")
-    print(f"PIL Image save [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s") ; print("\r\n")
-
+            tiles_checked += 1
+    # print(f"\tDEBUG             [{i}]: tile_x_max: {tile_x_max}, tile_y_max: {tile_y_max}, tiles: {tilecounter} from total of {tiles_checked}")
+    print(f"\tPIL Image save    [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s") ; print("\r\n")
     return tilecounter
     
 
-#############################
-# function to extract tiles #
-#############################
+##################################################################################################
+# load the slide with Openslide, convert 1/4th of the PIL Image to np.ndarray then run 4 passes  #
+##################################################################################################
 def processWSI(wsi):
 
     tiles_total = 0
     openslide_wsi = openslide.OpenSlide(wsi)
 
-    # width of image e.g. 20001
     w = openslide_wsi.level_dimensions[resolution][1]
     h = openslide_wsi.level_dimensions[resolution][0]
 
@@ -107,25 +104,25 @@ def processWSI(wsi):
     x1 = ((w // tile_size) // 2) * tile_size
     y1 = ((h // tile_size) // 2) * tile_size
     # another half of the pixels per dimension
-    x2 = int(w - x1)
-    y2 = int(h - y1)
+    x2 = int(w - x1) + tile_size
+    y2 = int(h - y1) + tile_size
 
     print("shape and resolution details of the input file: ")
     print("\tlevel_count: ", openslide_wsi.level_count)
-    print("\tfirst 3 level_dimensions (h,w): ", openslide_wsi.level_dimensions[0:2])
-    print("\tfirst 3 level_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples[0:2])
+    print("\tfirst 3 level_dimensions (h,w): ", openslide_wsi.level_dimensions[0:3])
+    print("\tfirst 3 level_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples[0:3])
     print("\r\n")
 
     qregions = [
-        # (location_start_x, location_start_y, size_x, size_y)
         (0,0, x1, y1),
         (x1,0, x2, y1),
         (0,y1, x1, y2),
-        (x1,y1, x2, y2)
+        (x1,y1, x1, y2)
     ]
 
     for i in range(4):
-
+        print(f"processing quarter {i}")
+        print(f"\tbounding boxes (location_start_x, location_start_y, size_x, size_y): {qregions[i]}")
         st = time.time()
         image_pil = openslide_wsi.read_region(
             location=(qregions[i][0], qregions[i][1]),
@@ -136,7 +133,7 @@ def processWSI(wsi):
             level=resolution,
         )
         print(
-            f"openslide read_region()[{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
+            f"\topenslide read_region()[{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
         )
 
         st = time.time()
@@ -144,11 +141,12 @@ def processWSI(wsi):
             np.uint8
         )
         del image_pil
-        print(f"cv2 cv2.cvtColor(np.asarray())[{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+        print(f"\tcv2 cv2.cvtColor(np.asarray())[{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         
         tiles_total += TissueDetectandSave(image_nparray, coverage, i)
         del image_nparray
 
+    openslide_wsi.close()
     return tiles_total
 
     
@@ -159,10 +157,10 @@ print(f"***************** TILE EXTRACTOR *****************")
 print(f"**************************************************")
 print("\r\n")
 
-#######
-# run #
-#######
-
+####################################
+# run for all slides in the folder #
+####################################
+wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 for wsi in wsi_paths:
     print(
         f"************ Processing {wsi.name} on resolution level {resolution} ************"
