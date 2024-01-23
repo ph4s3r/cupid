@@ -45,7 +45,7 @@ from torch.utils.tensorboard import SummaryWriter # launch with http://localhost
 base_dir = Path("/mnt/bigdata/placenta")
 model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-tiles_dir = base_dir / Path("tiles-training")
+tiles_dir = base_dir / Path("tiles-train-500")
 
 ##############################################################################################################
 # instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
@@ -103,7 +103,7 @@ def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
 # read tiles with DALI #
 ########################
 
-batch_size = 128 # 128 with AMP, 62 without
+batch_size = 24 # 24 is the max for 500x500 images
 # we make a 80-20 split by using 5 shards (splitting the images to 5 batches: each shard number refers to 20% of the data)
 num_shards = 5
 train_shard_ids = list(range(4))  # Shards 0-3 for training
@@ -116,7 +116,7 @@ wsi_folders = [f for f in Path(tiles_dir).glob("*/")]
 assert len(wsi_folders) > 0, f"No wsi subfolders found under {tiles_dir}"
 
 for wsi_folder in wsi_folders:
-    filenames = [str(f) for f in Path(wsi_folder).glob("*.png")]
+    filenames = [str(f) for f in Path(wsi_folder).glob("*.jpg")]
     files.extend(filenames)
 
 labels = copy.deepcopy(files)
@@ -279,9 +279,10 @@ hyperparams_tensorboard = {
       "scheduler.step_size": str(scheduler.step_size),
       "scheduler.gamma": str(scheduler.gamma),
       "optimizer": str(optimizer),
-      "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options),
+      "amp_config": str(amp._amp_state.opt_properties.options),
       "batch_size": str(batch_size),
-      "training_started": str(training_start)
+      "training_started": str(training_start),
+      "comment": user_input
 }
 
 writer.add_hparams(hyperparams_tensorboard, {})
