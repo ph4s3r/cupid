@@ -14,19 +14,19 @@ out_folder = "/mnt/bigdata/placenta/tajlz"   # creates tiles in a directory with
 ##########
 # Config #
 ##########
-wsi_resolution_level = 1 # 0 is the highest resolution, for available resolutions please use the index of level_downsamples (will be printed below)
+wsi_resolution_level = 2 # 0 is the highest resolution, for available resolutions please use the index of level_downsamples (will be printed below)
 tile_size = 500
 
 
 ###########
 # imports #
 ###########
+import cv2
 import time
 import openslide
 import numpy as np
-from pathml.utils import pil_to_rgb
+from PIL import Image
 from pathlib import Path
-from PIL import Image as pil_image
 from pathml.core import Tile, types
 from pathml.preprocessing import TissueDetectionHE
 
@@ -38,7 +38,7 @@ wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 #############################
 
 
-def extract_tiles(wsi, resolution_level, tile_size):
+def extract_tiles(wsi, lvl, tile_size):
     
     openslide_wsi = openslide.OpenSlide(wsi)
 
@@ -48,23 +48,23 @@ def extract_tiles(wsi, resolution_level, tile_size):
     print("\tlevel_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples)
     print("\tlevel_dimensions (h,w): ", openslide_wsi.level_dimensions)
 
-    start_time = time.time()
-    openslide_region = openslide_wsi.read_region(
+    st = time.time()
+    image_pil = openslide_wsi.read_region(
         location=(0, 0), 
-        size=(openslide_wsi.level_dimensions[resolution_level][1], openslide_wsi.level_dimensions[resolution_level][0]),
-        level=resolution_level
+        size=(openslide_wsi.level_dimensions[lvl][1], openslide_wsi.level_dimensions[lvl][0]),
+        level=lvl
         )
-    print(f"openslide_region {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s")
-    
-    start_time = time.time()
-    region = pil_to_rgb(openslide_region)
-    print(f"pil_to_rgb took {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s")
+    print(f"openslide read_region() {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
 
-    start_time = time.time()
-    im = Tile(region, coords=(0, 0), name="testregion", slide_type=types.HE)
-    print(f"pathML Tile() took {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s")
+    st = time.time()
+    image_nparray = cv2.cvtColor(
+        np.asarray(image_pil), cv2.COLOR_RGBA2RGB
+        ).astype(np.uint8)
+    print(f"cv2 cv2.cvtColor(np.asarray()) took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
 
-    start_time = time.time()
+    im = Tile(image_nparray, coords=(0, 0), name="testregion", slide_type=types.HE)
+
+    st = time.time()
     TissueDetectionHE(
         mask_name = "tissue", 
         threshold = 19,
@@ -73,15 +73,15 @@ def extract_tiles(wsi, resolution_level, tile_size):
         max_hole_size = 10000,
         use_saturation=True
     ).apply(im)
-    print(f"TissueDetectionHE took {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s")
+    print(f"TissueDetectionHE took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
 
     
-    start_time = time.time()
+    st = time.time()
     im.masks["tissue"][im.masks["tissue"] == 127] = 1 # convert 127s to 1s
     im.image *= np.expand_dims(im.masks["tissue"], 2) # element wise in-place mm
     
-    maxx = ((region.shape[0] // tile_size) * tile_size) - tile_size
-    maxy = ((region.shape[1] // tile_size) * tile_size) - tile_size
+    maxx = ((im.shape[0] // tile_size) * tile_size) - tile_size
+    maxy = ((im.shape[1] // tile_size) * tile_size) - tile_size
 
     tilecounter = 0; tile_mask_sum_max = 0
     wsiname = openslide_wsi._filename.stem
@@ -98,10 +98,14 @@ def extract_tiles(wsi, resolution_level, tile_size):
             else:
                 if tile_mask_sum_max < tile_mask_sum:
                     tile_mask_sum_max = tile_mask_sum
-                pil_image.fromarray(im.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]).save(f'{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg')
+                Image.fromarray(
+                    im.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]
+                    ).save(
+                        f'{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg'
+                        )
                 tilecounter += 1
     
-    print(f"pil_image.save took {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s")
+    print(f"pil_image.save took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.2f}s")
     openslide_wsi.close()
     return tilecounter
 
@@ -113,6 +117,6 @@ for wsi in wsi_paths:
     print(f"************ Processing {wsi.name} on resolution level {wsi_resolution_level} ************") 
     print("\r\n")
     start_time = time.time()
-    wsi_tilecount = extract_tiles(wsi, resolution_level=wsi_resolution_level, tile_size=tile_size)
+    wsi_tilecount = extract_tiles(wsi, lvl=wsi_resolution_level, tile_size=tile_size)
     print(f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.2f}s ************")
     print("\r\n")
