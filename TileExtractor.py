@@ -8,7 +8,7 @@
 # IO folders #
 ##############
 wsi_folder = "/mnt/bigdata/placenta/wsitest"  # reads all wsi files in folder
-out_folder = "/mnt/bigdata/placenta/tilestest"  # creates tiles in a directory with wsi name
+out_folder = "/mnt/bigdata/placenta/tilestest-418-keep"  # creates tiles in a directory with wsi name
 
 
 ##########
@@ -72,15 +72,18 @@ def TissueDetectandSave(image_nparray, coverage, i):
             tile_mask = im.masks["tissue"][
                 tile_x_start:tile_x_end, tile_y_start:tile_y_end
             ]
-            if np.sum(tile_mask) > threshold:
+            if np.sum(tile_mask) >= threshold:
                 if tile_x_max < tile_x_start:
                     tile_x_max = tile_x_start
                 if tile_y_max < tile_y_start:
                     tile_y_max = tile_y_start
+                    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg
                 Image.fromarray(
                     im.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]
                 ).save(
-                    f"{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg"
+                    f"{out_folder}/{wsiname}/{wsiname}-{tile_x_start}_{tile_y_start}.jpg",
+                    quality=95,
+                    keep_rgb=True
                 )
                 tilecounter += 1
             tiles_checked += 1
@@ -122,7 +125,7 @@ def processWSI(wsi):
 
     for i in range(4):
         print(f"processing quarter {i}")
-        print(f"\tbounding boxes (location_start_x, location_start_y, size_x, size_y): {qregions[i]}")
+        # print(f"\tDEBUG             [{i}]: bounding boxes (loc_x, loc_y, size_x, size_y): {qregions[i]}")
         st = time.time()
         image_pil = openslide_wsi.read_region(
             location=(qregions[i][0], qregions[i][1]),
@@ -132,16 +135,14 @@ def processWSI(wsi):
             ),
             level=resolution,
         )
-        print(
-            f"\topenslide read_region()[{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s"
-        )
+        print(f"\tread_region()     [{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
         st = time.time()
         image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
             np.uint8
         )
         del image_pil
-        print(f"\tcv2 cv2.cvtColor(np.asarray())[{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
+        print(f"\tnp.asarray()      [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         
         tiles_total += TissueDetectandSave(image_nparray, coverage, i)
         del image_nparray
