@@ -176,7 +176,6 @@ model = se_resnext101_32x4d(
 # begin training #
 ##################
 
-num_ftrs = model.fc.in_features
 model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
 
 #####################################
