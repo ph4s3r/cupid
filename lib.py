@@ -180,5 +180,3 @@ class EarlyStopping:
             return True
         else:
             return False
-        
-        
