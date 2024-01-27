@@ -14,7 +14,7 @@ if os.name == "nt":
 # local
 import lib
 import timedinput
-import dali_train as dali
+import dali_raytune_train as dali
 import helpers.doublelogger as dl
 # pip
 import time
