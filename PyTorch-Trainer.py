@@ -226,41 +226,8 @@ scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
 # train
 total_step = dataset_size # full training dataset len
 
-# early stop class (val_loss)
-class EarlyStopping:
-    # TODO: try a weighted metric
-    def __init__(self, patience=5, min_delta=0.001, verbose=False, consecutive=False):
-
-        self.patience = patience
-        self.verbose = verbose
-        self.min_delta = min_delta
-        self.consecutive = consecutive
-        
-        self.epoch = 0
-        self.counter = 0
-        self.last_val_loss = 12350
-        self.early_stop = False
-
-    def __call__(self, val_loss):
-        self.epoch = self.epoch + 1
-        if self.last_val_loss - val_loss < self.min_delta:
-            self.counter +=1
-            if self.counter >= self.patience:  
-                self.early_stop = True
-        else:
-            if self.consecutive:    # stopping only on consecutive <patience> number of degradation epochs
-                self.counter = 0 
-        if self.verbose and self.epoch > 1:
-            log.info(f"Early stop checker: current validation loss: {val_loss:.6f}, last validation loss: {self.last_val_loss:.6f}, delta: {(self.last_val_loss - val_loss):.6f}, min_delta: {self.min_delta:.6f}, hit_n_run-olt torrentek szama: {self.counter} / {self.patience}")
-        self.last_val_loss = val_loss
-        if self.early_stop:
-            log.info("Early stop condition reached, stopping training")
-            return True
-        else:
-            return False
-
 # early stop on val loss not decreasing for <patience> epochs with more than <min_delta>
-early_stop_val_loss = EarlyStopping(
+early_stop_val_loss = lib.EarlyStopping(
     min_delta=0.001,
     patience=15,
     verbose=True,
