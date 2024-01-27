@@ -14,7 +14,7 @@ if os.name == "nt":
 # local
 import lib
 import timedinput
-import dali_raytune_train as dali
+import dali_raytune_train
 import helpers.doublelogger as dl
 # pip
 import time
@@ -27,8 +27,10 @@ from pathlib import Path
 from functools import partial
 from datetime import datetime
 from coolname import generate_slug
-from ray.air import Checkpoint, session
+from ray.train import Checkpoint
+from ray.air import session
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.hyperopt import HyperOptSearch
 from sklearn.metrics import precision_recall_fscore_support
 
 
@@ -37,22 +39,6 @@ from nvidia_resnets.resnet import (
 )
 
 from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
-
-##################
-# raytune config #
-##################
-
-gpus_per_trial = 1
-
-config = {
-    "num_epochs": 120,
-    "nesterov": tune.choice([True, False]),
-    "momentum": tune.uniform(0.1, 0.9),
-    "lr": tune.loguniform(1e-4, 1e-1),
-    "batch_size": 128,  # It is also ok to specify constant values. othwerwise max is 128 with AMP, 62 without
-    "gpus_per_trial": 1
-}
-
 
 #####################
 # configure folders #
@@ -103,59 +89,26 @@ def signal_handler(signum, frame):
 # attach signal handler
 signal.signal(signal.SIGINT, signal_handler)
 
-# def save_model(epoch, model, optimizer, scheduler, amp, checkpoint_file):
-#         torch.save({
-#             'epoch': epoch,
-#             'model_state_dict': model.state_dict(),
-#             'optimizer_state_dict': optimizer.state_dict(),
-#             'scheduler_state_dict': scheduler.state_dict(),
-#             'amp': amp.state_dict()
-#             }, checkpoint_file)
-#         log.info(f"Model successfully saved to file {checkpoint_file}")
 
-# to update learning rate
-scheduler = ASHAScheduler(
-    metric="loss",
-    mode="min",
-    max_t=config.get("num_epochs"),
-    grace_period=1,
-    reduction_factor=2,
-)
-
-
-def trainer(data_dir):
+def trainer(config, data_dir = tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, dataset_size = dali.dataloaders(data_dir)
+    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(data_dir)
 
     ####################
     # model definition #
     ####################
 
-    # https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/Classification/ConvNets/se-resnext101-32x4d
-    # se-resnext101-32x4d paper: https://arxiv.org/pdf/1611.05431.pdf
-    # torchhub: https://pytorch.org/hub/nvidia_deeplearningexamples_se-resnext/
-
     model = se_resnext101_32x4d(
         pretrained=True
     )
-    # default input image dim: 224
 
     ##################
     # begin training #
     ##################
 
-    num_ftrs = model.fc.in_features
     model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
-
-    #####################################
-    # can load saved weights and biases #
-    #####################################
-    # checkpoint = None
-    # if 0:
-    #     checkpoint = torch.load(base_dir / "training_checkpoints" / "")
-    #     model.load_state_dict(checkpoint["model_state_dict"])
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     log.info(f"Using {device}")
@@ -182,9 +135,6 @@ def trainer(data_dir):
             keep_batchnorm_fp32=None,
             master_weights=None,
         )
-    # if checkpoint is not None:
-    #     if checkpoint.get('amp') is not None:
-    #         amp.load_state_dict(checkpoint['amp'])
 
     #########################
     # raytune checkpointing #
@@ -204,15 +154,6 @@ def trainer(data_dir):
     total_step = dataset_size # full training dataset len
     val_steps = 0
 
-
-    # early stop on val loss not decreasing for <patience> epochs with more than <min_delta>
-    early_stop_val_loss = lib.EarlyStopping(
-        min_delta=0.001,
-        patience=15,
-        verbose=True,
-        consecutive=False
-    )
-
     time_elapsed = time.time() - start_time
     log.info('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
     start_time = time.time()
@@ -221,9 +162,6 @@ def trainer(data_dir):
 
     hyperparams_tensorboard = {
         "model": "se_resnext101_32x4d",
-        "scheduler_type": str(scheduler), 
-        "scheduler.step_size": str(scheduler.step_size),
-        "scheduler.gamma": str(scheduler.gamma),
         "optimizer": str(optimizer),
         "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options),
         "batch_size": str(config.get('batch_size')),
@@ -234,7 +172,7 @@ def trainer(data_dir):
     writer.add_text("hyperparameters", lib.pretty_json(hyperparams_tensorboard))
     writer.add_text("comment", user_input)
 
-    for epoch in range(config.get('num_epochs')):
+    for epoch in range(start_epoch, config.get('max_epochs')):
 
         epoch_start_time = time.time()
 
@@ -251,16 +189,26 @@ def trainer(data_dir):
             images, labels_dict = data[0]['data'], data[0]['label']
             images = images.to(device).to(torch.float16)
             labels = labels_dict.squeeze(-1).long().to(device)
-            # forward pass
-            outputs = model(images)
-            loss = criterion(outputs, labels)
 
             # backward and optimize
             optimizer.zero_grad()
 
+            # forward pass
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
             optimizer.step()
+
+            running_loss += loss.item()
+            epoch_steps += 1
+            if i % 2000 == 1999:  # print every 2000 mini-batches
+                print(
+                    "[%d, %5d] loss: %.3f"
+                    % (epoch + 1, i + 1, running_loss / epoch_steps)
+                )
+                running_loss = 0.0
 
             total_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
@@ -271,7 +219,6 @@ def trainer(data_dir):
 
         epoch_loss = total_loss / total_step
         epoch_acc = total_correct / total
-        # https://scikit-learn.org/0.15/modules/generated/sklearn.metrics.precision_recall_fscore_support.html
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
 
         # write epoch learning stats to tensorboard & file
@@ -280,20 +227,9 @@ def trainer(data_dir):
         writer.add_scalar('weighted_precision/train', precision, epoch)
         writer.add_scalar('weighted_recall/train', recall, epoch)
         writer.add_scalar('weighted_f1/train', f1_score, epoch)
-        latest_lr = torch.optim.lr_scheduler.MultiStepLR.get_last_lr(scheduler)[-1]
-        writer.add_scalar('params/learning_rate', latest_lr, epoch)
 
         # show stats at the end of epoch
-        log.info(f"Training - Epoch {epoch+1}/{config.get('num_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, Last lr: {latest_lr:.8f}")
-        
-        running_loss += loss.item()
-        epoch_steps += 1
-        if i % 2000 == 1999:  # print every 2000 mini-batches
-            print(
-                "[%d, %5d] loss: %.3f"
-                % (epoch + 1, i + 1, running_loss / epoch_steps)
-            )
-            running_loss = 0.0
+        log.info(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
         
         val_loss = 0
         val_correct = 0
@@ -301,8 +237,9 @@ def trainer(data_dir):
         val_all_labels = []
         val_all_predictions = []
 
-        with torch.no_grad():
-            for data in val_loader:
+        
+        for data in val_loader:
+            with torch.no_grad():
                 images, labels_dict = data[0]['data'], data[0]['label']
                 images = images.to(device).to(torch.float16)
                 labels = labels_dict.squeeze(-1).long().to(device)
@@ -310,13 +247,14 @@ def trainer(data_dir):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
 
-                val_loss += loss.item()
+                val_loss += loss.cpu().numpy()
                 _, predicted = torch.max(outputs.data, 1)
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
                 val_all_labels.extend(labels.cpu().numpy())
                 val_all_predictions.extend(predicted.cpu().numpy())
                 val_steps += 1
+                
 
         val_epoch_loss = val_loss / len(val_loader)
         val_epoch_acc = val_correct / val_total
@@ -334,14 +272,7 @@ def trainer(data_dir):
         writer.add_scalar('weighted_recall/val', val_recall, epoch)
         writer.add_scalar('weighted_f1/val', val_f1_score, epoch)
 
-        log.info(f"Validation - Epoch {epoch+1}/{config.get('num_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
-
-        # decay learning rate
-        scheduler.step()
-
-        # save model checkpoint and data (epoch)
-        if epoch > 5 or interrupted:
-            checkpoint_file = str(model_checkpoint_dir)+"/"+tensorboard_session_name+str(epoch)+".ckpt"
+        log.info(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         checkpoint_data = {
             "epoch": epoch,
@@ -351,7 +282,7 @@ def trainer(data_dir):
         checkpoint = Checkpoint.from_dict(checkpoint_data)
 
         session.report(
-            {"loss": val_loss / val_steps, "accuracy": epoch_acc},
+            {"loss": val_loss / val_steps, "accuracy": val_epoch_acc},
             checkpoint=checkpoint,
         )
 
@@ -362,41 +293,59 @@ def trainer(data_dir):
         epoch_complete = time.time() - epoch_start_time
         # end of epoch run (identation!)
         writer.flush()
-        # check early stopping conditions, stop if necessary
-        if early_stop_val_loss(val_epoch_loss):
-            break
 
 
+def main():
 
-result = tune.run(
-    partial(trainer, data_dir=tiles_dir),
-    resources_per_trial={"cpu": 8, "gpu": gpus_per_trial},
-    config=config,
-    num_samples=10, # 1
-    scheduler=scheduler,
-    checkpoint_at_end=True)
+    ########################
+    # raytune search space #
+    ########################
 
-# 1
-# At each trial, Ray Tune will now randomly sample a combination of parameters from these search spaces. 
-# It will then train a number of models in parallel and find the best performing one among these. 
-# We also use the ASHAScheduler which will terminate bad performing trials early.
+    # search space
+    search_space = {
+        "max_epochs": 120,
+        "nesterov": tune.choice([True, False]),
+        "momentum": tune.uniform(0.1, 0.9),
+        "lr": tune.loguniform(1e-4, 1e-1),
+        "batch_size": 24,  # It is also ok to specify constant values. othwerwise max is 128 with AMP, 62 without
+        "gpus_per_trial": 1
+    }
 
-best_trial = result.get_best_trial("loss", "min", "last")
-print(f"Best trial config: {best_trial.config}")
-print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
-print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+    scheduler = ASHAScheduler(
+        metric="loss",
+        mode="min",
+        max_t=search_space.get("max_epochs"),
+        grace_period=1,
+        reduction_factor=2,
+    )
 
-best_trained_model = model(best_trial.config["l1"], best_trial.config["l2"])
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda:0"
-    if gpus_per_trial > 1:
-        best_trained_model = nn.DataParallel(best_trained_model)
-best_trained_model.to(device)
+    ###############
+    # raytune run #
+    ###############
 
-best_checkpoint = best_trial.checkpoint.to_air_checkpoint()
-best_checkpoint_data = best_checkpoint.to_dict()
+    hyperopt_search = HyperOptSearch(search_space, metric="mean_accuracy", mode="max")
 
-best_trained_model.load_state_dict(best_checkpoint_data["net_state_dict"])
+    tuner = tune.Tuner(
+        trainer,
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            search_alg=hyperopt_search,
+        ),
+    )
 
-writer.close()
+    results = tuner.fit()
+
+    # At each trial, Ray Tune will now randomly sample a combination of parameters from these search spaces. 
+    # It will then train a number of models in parallel and find the best performing one among these. 
+    # We also use the ASHAScheduler which will terminate bad performing trials early.
+
+    best_trial = results.get_best_trial("loss", "min", "last")
+    print(f"Best trial config: {best_trial.config}")
+    print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
+    print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+
+    writer.close()
+
+
+if __name__ == "__main__":
+    main()
