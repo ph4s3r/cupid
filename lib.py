@@ -1,25 +1,45 @@
 import json
+import time
 import torch
 import pathml
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
+from multiprocessing import Pool
 from torchvision.transforms import v2
+
+def timeit(func):
+    """
+    basic timer decorator
+    """    
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print('Function "{}" completed in {:.0f}m {:.0f}s'.format(func.__name__, elapsed_time // 60, elapsed_time % 60))
+        return result
+    return wrapper
+
 
 def pretty_json(hp):
   json_hp = json.dumps(hp, indent=2)
   return "".join("\t" + line for line in json_hp.splitlines(True))
 
 def human_readable_size(size, decimal_places=2):
-    """Convert a size in bytes to a human-readable format."""
+    """
+    Convert a size in bytes to a human-readable format.
+    """
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size < 1024.0 or unit == "TB":
             break
         size /= 1024.0
     return f"{size:.{decimal_places}f} {unit}"
 
-def print_file_sizes(directory):
-    """List files and their sizes in a directory."""
+def print_file_sizes(directory) -> None:
+    """
+    List files and their sizes in a directory.
+    """
     p = Path(directory)
     print("file sizes in directory", p)
     if not p.is_dir():
@@ -32,8 +52,10 @@ def print_file_sizes(directory):
 
 
 # plot a batch of tiles with masks
-def vizBatch(im, tile_masks, tile_labels = None):
-    # create a grid of subplots
+def vizBatch(im, tile_masks, tile_labels = None) -> None:
+    """
+    Create a grid of subplots
+    """
     _, axes = plt.subplots(4, 4, figsize=(8, 8))  # Adjust figsize as needed
     axes = axes.flatten()
 
@@ -65,15 +87,9 @@ def vizBatch(im, tile_masks, tile_labels = None):
 transforms = v2.Compose( # don't change the order without knowing exactly what you are doing! all transformations have specific input requirements.
     [
         v2.ToImage(),                                           # this operation reshapes the np.ndarray tensor from (3,h,w) to (h,3,w) shape
-        v2.ToDtype(torch.float32, scale=True),                  # works only on tensor
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back, otherwise Normalize will fail
         v2.Lambda(lambda x: x / 255.0),                         # convert pixel values to [0, 1] range
-        v2.RandomApply(
-            transforms=[
-                v2.ColorJitter(brightness=.3, hue=.15, saturation=.2, contrast=.3)
-            ]
-        , p=0.3),
-        v2.Resize(size=224, antialias=True),                   # same size as the tile im
+        v2.ToDtype(torch.uint8, scale=True),                    
     ]
 )
 
@@ -83,39 +99,43 @@ maskforms = v2.Compose(
         v2.Lambda(lambda x: x.permute(1, 0, 2)),                # get our C, H, W format back
         v2.Lambda(lambda x: x / 127.),                          # convert pixel values to [0., 1.] range
         v2.ToDtype(torch.uint8),                                # float to int
-        v2.Resize(size=224, antialias=False)                    # same size as the tile im
     ]
 )
 
-
-##########################################################
-# drop tiles covered less than min_mask_coverage by mask #
-##########################################################
-min_mask_coverage = 0.35
 class TransformedPathmlTileSet(pathml.ml.TileDataset):
+    """
+    custom class to drop tiles covered less than min_mask_coverage by mask
+    """
     def __init__(self, h5file):
         super().__init__(h5file)
+        self.initial_length = super().__len__()
+        self.min_mask_coverage = 0.35
         self.dimx = self.tile_shape[0]
         self.dimy = self.tile_shape[1]
         self.usable_indices = self._find_usable_tiles()
-        self.file_label = Path(self.file_path).stem  # Extract the filename without extension+
+        self.file_label = Path(self.file_path).stem
+
+    def _compute_coverage(self, idx):
+        _, tile_masks, _, _ = super().__getitem__(idx)
+        return np.sum(tile_masks == 127.)
 
     def _find_usable_tiles(self):
-        usable_indices = []
-        threshold_percent = min_mask_coverage
-        threshold_val = int(self.dimx * self.dimy * threshold_percent)
         initial_length = super().__len__()
+        threshold_percent = self.min_mask_coverage
+        threshold_val = int(self.dimx * self.dimy * threshold_percent)
 
-        for idx in range(initial_length):
-            _, tile_masks, _, _ = super().__getitem__(idx)
-            coverage = np.sum(tile_masks == 127.)
-            if coverage >= threshold_val:
-                usable_indices.append(idx)
+        with Pool() as pool:
+            coverage_values = pool.map(self._compute_coverage, range(initial_length))
 
-        return usable_indices
+        usable_indices = np.where(np.array(coverage_values) >= threshold_val)[0]
 
+        return usable_indices.tolist()
+    
     def __len__(self):
         return len(self.usable_indices)
+
+    def original_length(self):
+        return self.initial_length
 
     def __getitem__(self, idx):
         actual_idx = self.usable_indices[idx]

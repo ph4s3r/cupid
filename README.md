@@ -14,11 +14,12 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 ### preprocessing 
 
-- **pathML-placenta-TissueDetection.ipynb**: reading wsi's and producing h5path files with pathml
+- **TileExtractor.py**: reading tiff with openslide and saving usable tiles to jpeg (3+ times faster, no h5 created compared to pathml pipeline)
+- **pathML-placenta-TissueDetection.ipynb**: (legacy) reading wsi's and producing h5path files with pathml
 
 ### saving tiles from h5 to png images
 
-- **pathML-TileSaver.py**: read h5s and write image files
+- **pathML-TileSaver.py**: read h5s and writes usable tiles to jpeg
 
 ### training
 
@@ -49,7 +50,14 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # TODOs
 
+- ray-tune
 - feature extraction
+- separate config from code: with e.g. Hydra or ConfigArgParse
+- switch to pytorch amp from APEX amp, because it is deprecated
+- study se_resnext101_32x4d more to fine-tune
+- think about segmentation -> https://github.com/ph4s3r/clinical/discussions/4
+- test in different env like Azure (just make sure the requirements.txt / conda env yaml is complete)
+- test out different image sizes / batch
 
 # notes
 
