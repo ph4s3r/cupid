@@ -170,7 +170,6 @@ for wsi in wsi_paths:
     start_time = time.time()
     wsi_tilecount = processWSI(wsi)
     print(
-        f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in 
-        {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.0f}s ************"
+        f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.0f}s ************"
     )
     print("\r\n")
