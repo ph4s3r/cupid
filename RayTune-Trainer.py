@@ -21,7 +21,6 @@ import time
 import torch
 import signal
 import logging
-from apex import amp
 from ray import tune
 from pathlib import Path
 from functools import partial
@@ -122,20 +121,6 @@ def trainer(config, data_dir = tiles_dir):
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=0.9)
 
-    # Automatic Mixed Precision (AMP) https://github.com/NVIDIA/apex deprecated...
-    # TODO: change to https://pytorch.org/docs/stable/amp.html
-    model, optimizer = amp.initialize(
-            model, 
-            optimizer,
-            opt_level="O1", # 01: Mixed precision
-            loss_scale="dynamic",
-            # just all the defaults for 01 
-            cast_model_type=None,
-            patch_torch_functions=True,
-            keep_batchnorm_fp32=None,
-            master_weights=None,
-        )
-
     #########################
     # raytune checkpointing #
     #########################
@@ -163,7 +148,6 @@ def trainer(config, data_dir = tiles_dir):
     hyperparams_tensorboard = {
         "model": "se_resnext101_32x4d",
         "optimizer": str(optimizer),
-        "amp._amp_state.opt_properties.options": str(amp._amp_state.opt_properties.options),
         "batch_size": str(config.get('batch_size')),
         "training_started": str(training_start)
     }
@@ -173,8 +157,6 @@ def trainer(config, data_dir = tiles_dir):
     writer.add_text("comment", user_input)
 
     for epoch in range(start_epoch, config.get('max_epochs')):
-
-        epoch_start_time = time.time()
 
         total_loss = 0
         total_correct = 0
@@ -197,8 +179,6 @@ def trainer(config, data_dir = tiles_dir):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
             optimizer.step()
 
             running_loss += loss.item()
@@ -289,8 +269,6 @@ def trainer(config, data_dir = tiles_dir):
         if interrupted:
             log.info(f"KeyboardInterrupt received: saving model for session {tensorboard_session_name} and exiting")
             break
-
-        epoch_complete = time.time() - epoch_start_time
         # end of epoch run (identation!)
         writer.flush()
 
