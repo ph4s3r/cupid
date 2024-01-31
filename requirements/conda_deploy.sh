@@ -45,6 +45,14 @@ conda install -y openjdk==8.0.152
 pip install pathml==2.1.1
 pip install ray==2.9.1 # do not install ray with conda!!! buggy because train.Checkpoint is not found
 pip install "ray[tune]"
+pip install "ray[default]"
 pip install hyperopt
 # pathml had a GLIBC error where it does not found a library, so need to link the 
 # ln -sf /home/peet/.conda/envs/pathml/lib/libstdc++.so.6 /home/peet/.conda/envs/pathml/lib/libstdc++.so.6
+
+pip install absl-py
+pip install sphinx-glpi-theme
+pip install prettytable
+pip install --no-cache-dir --index-url https://pypi.nvidia.com pytorch-quantization==2.1.2
+
+pip install tensorboard
