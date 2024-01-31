@@ -88,7 +88,7 @@ def trainer(config, data_dir = tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(data_dir)
+    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(data_dir, batch_size=24)
 
     ####################
     # model definition #
@@ -272,6 +272,8 @@ def main():
         tune_config=tune.TuneConfig(
             num_samples=10,
             search_alg=hyperopt_search,
+            scheduler=scheduler,
+            max_concurrent_trials=1
         ),
     )
 
