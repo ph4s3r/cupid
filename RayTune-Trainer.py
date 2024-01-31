@@ -113,10 +113,6 @@ def trainer(config, data_dir=tiles_dir):
     ###################
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     log.info(f"Using {device}")
-    # make sure we use cudnn
-    # log.info("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
-    # enable cudnn benchmarks
-    # torch.backends.cudnn.benchmark = True
     model = model.to(device)
 
     ######################
