@@ -23,7 +23,6 @@ import signal
 import logging
 from ray import tune
 from pathlib import Path
-from functools import partial
 from datetime import datetime
 from coolname import generate_slug
 from ray.train import Checkpoint
@@ -36,8 +35,6 @@ from sklearn.metrics import precision_recall_fscore_support
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
 )
-
-from torch.utils.tensorboard import SummaryWriter # launch with http://localhost:6006/
 
 #####################
 # configure folders #
@@ -62,7 +59,6 @@ if user_input is not None:
         tensorboard_log_dir = base_dir / "tensorboard_data" / Path(tensorboard_session_name)
 
 tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
-writer = SummaryWriter(log_dir=tensorboard_log_dir)
 
 
 #############################################
@@ -112,9 +108,9 @@ def trainer(config, data_dir = tiles_dir):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     log.info(f"Using {device}")
     # make sure we use cudnn
-    log.info("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
+    # log.info("torch.backends.cudnn.enabled?: ", torch.backends.cudnn.enabled)
     # enable cudnn benchmarks
-    torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.benchmark = True
     model = model.to(device)
 
     # loss and optimizer
@@ -144,17 +140,6 @@ def trainer(config, data_dir = tiles_dir):
     start_time = time.time()
     training_start = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
     log.info(f"training started at {training_start}")
-
-    hyperparams_tensorboard = {
-        "model": "se_resnext101_32x4d",
-        "optimizer": str(optimizer),
-        "batch_size": str(config.get('batch_size')),
-        "training_started": str(training_start)
-    }
-
-    writer.add_hparams(hyperparams_tensorboard, {})
-    writer.add_text("hyperparameters", lib.pretty_json(hyperparams_tensorboard))
-    writer.add_text("comment", user_input)
 
     for epoch in range(start_epoch, config.get('max_epochs')):
 
@@ -201,13 +186,6 @@ def trainer(config, data_dir = tiles_dir):
         epoch_acc = total_correct / total
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
 
-        # write epoch learning stats to tensorboard & file
-        writer.add_scalar("loss/train", loss, epoch)
-        writer.add_scalar('acc/train', epoch_acc, epoch)
-        writer.add_scalar('weighted_precision/train', precision, epoch)
-        writer.add_scalar('weighted_recall/train', recall, epoch)
-        writer.add_scalar('weighted_f1/train', f1_score, epoch)
-
         # show stats at the end of epoch
         log.info(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
         
@@ -240,18 +218,6 @@ def trainer(config, data_dir = tiles_dir):
         val_epoch_acc = val_correct / val_total
         val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
-        train_val_acc_diff = epoch_acc - val_epoch_acc
-        train_val_loss_diff = val_loss - loss 
-
-        # log validation stats
-        writer.add_scalar("loss/val", val_epoch_loss, epoch)
-        writer.add_scalar('acc/val', val_epoch_acc, epoch)
-        writer.add_scalar("acc/train-val-diff", train_val_acc_diff, epoch)
-        writer.add_scalar("loss/val_loss-loss-diff", train_val_loss_diff, epoch)
-        writer.add_scalar('weighted_precision/val', val_precision, epoch)
-        writer.add_scalar('weighted_recall/val', val_recall, epoch)
-        writer.add_scalar('weighted_f1/val', val_f1_score, epoch)
-
         log.info(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         checkpoint_data = {
@@ -270,7 +236,6 @@ def trainer(config, data_dir = tiles_dir):
             log.info(f"KeyboardInterrupt received: saving model for session {tensorboard_session_name} and exiting")
             break
         # end of epoch run (identation!)
-        writer.flush()
 
 
 def main():
@@ -321,8 +286,6 @@ def main():
     print(f"Best trial config: {best_trial.config}")
     print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
     print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
-
-    writer.close()
 
 
 if __name__ == "__main__":
