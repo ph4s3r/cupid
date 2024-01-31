@@ -117,10 +117,11 @@ def trainer(config, data_dir=tiles_dir):
     lr_scheduler = ReduceLROnPlateau(
         optimizer,
         mode='min',
+        factor=0.5,
         min_lr=1e-4, 
         patience=3,
         eps=1e-7,
-        verbose=True
+        threshold=1e-4
         )
 
     #########################
@@ -142,7 +143,6 @@ def trainer(config, data_dir=tiles_dir):
     
     # train
     total_step = dataset_size # full training dataset len
-    val_steps = 0
 
     for epoch in range(start_epoch, config.get('max_epochs')):
 
@@ -188,11 +188,14 @@ def trainer(config, data_dir=tiles_dir):
         epoch_loss = total_loss / total_step
         epoch_acc = total_correct / total
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
-        curr_lr = lr_scheduler.get_last_lr()[0]
-
+        if epoch > 1:
+            curr_lr = lr_scheduler.get_last_lr()[0]
+        else:
+            curr_lr = config.get("lr")
         # show stats at the end of epoch
-        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, LR: {curr_lr:.5f}")
+        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
         
+        val_batches_processed = 0
         val_loss = 0
         val_correct = 0
         val_total = 0
@@ -215,15 +218,15 @@ def trainer(config, data_dir=tiles_dir):
                 val_correct += (predicted == labels).sum().item()
                 val_all_labels.extend(labels.cpu().numpy())
                 val_all_predictions.extend(predicted.cpu().numpy())
-                val_steps += 1
+                val_batches_processed += 1
                 
 
-        val_epoch_loss = val_loss / len(val_loader)
+        val_epoch_loss = val_loss / val_batches_processed
         val_epoch_acc = val_correct / val_total
         val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
         # schedule lr based on val loss
-        lr_scheduler.step(val_loss / val_steps)
+        lr_scheduler.step(val_epoch_loss)
 
         print(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
@@ -234,7 +237,7 @@ def trainer(config, data_dir=tiles_dir):
             "recall": recall,
             "f1_score": f1_score,
             "val_accuracy": val_epoch_acc,
-            "val_loss": val_loss / val_steps, 
+            "val_loss": val_epoch_loss, 
             "val_precision": val_precision,
             "val_recall": val_recall,
             "val_f1_score": val_f1_score,
@@ -261,7 +264,7 @@ def main():
         "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
         "momentum": tune.uniform(0.8, 0.95),
-        "lr": tune.loguniform(0.03, 0.04),
+        "lr": tune.loguniform(0.04, 0.05),
         "batch_size": 36
     }
     scheduler = ASHAScheduler(
