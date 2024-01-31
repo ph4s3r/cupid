@@ -2,8 +2,8 @@
 # Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
 # Last updated: 2024 jan 17                                                                              #
 # Training model                                                                                         #
-# Input: h5path files                                                                                    #
-# Output: trained model, optimizer, scheduler, epoch state, tensorboard data                             #
+# Input: directory containing wsi-named directories with the jpg tile files                              #
+# Output: model weights, optimizer, metrics (tensorboard)                                                #
 ##########################################################################################################
 
 
@@ -20,12 +20,14 @@ import time
 import torch
 import signal
 import logging
-from ray import tune
+import tempfile
+from ray import tune, init
 from pathlib import Path
-from datetime import datetime
-from coolname import generate_slug
-from ray.train import Checkpoint
 from ray.air import session
+from datetime import datetime
+from ray.train import RunConfig
+from coolname import generate_slug
+from ray.train import Checkpoint, get_context
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.hyperopt import HyperOptSearch
 from sklearn.metrics import precision_recall_fscore_support
@@ -112,24 +114,29 @@ def trainer(config, data_dir = tiles_dir):
     # torch.backends.cudnn.benchmark = True
     model = model.to(device)
 
-    # loss and optimizer
+    ######################
+    # loss and optimizer #
+    ######################
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=0.9)
 
     #########################
     # raytune checkpointing #
     #########################
-
+    # https://docs.ray.io/en/latest/train/user-guides/checkpoints.html
     checkpoint = session.get_checkpoint()
 
     if checkpoint:
-        checkpoint_state = checkpoint.to_dict()
-        start_epoch = checkpoint_state["epoch"]
-        model.load_state_dict(checkpoint_state["net_state_dict"])
-        optimizer.load_state_dict(checkpoint_state["optimizer_state_dict"])
+        with checkpoint.as_directory() as checkpoint_dir:
+            checkpoint_dict = torch.load(
+                os.path.join(checkpoint_dir, "checkpoint.pt")
+                )
+            start_epoch = checkpoint_dict["epoch"] + 1
+            model.load_state_dict(checkpoint_dict["model_state"])
+            optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
     else:
         start_epoch = 0
-
+    
     # train
     total_step = dataset_size # full training dataset len
     val_steps = 0
@@ -153,7 +160,7 @@ def trainer(config, data_dir = tiles_dir):
             epoch_steps = 0
 
             images, labels_dict = data[0]['data'], data[0]['label']
-            images = images.to(device).to(torch.float16)
+            images = images.to(device).to(torch.float32)
             labels = labels_dict.squeeze(-1).long().to(device)
 
             # backward and optimize
@@ -198,7 +205,7 @@ def trainer(config, data_dir = tiles_dir):
         for data in val_loader:
             with torch.no_grad():
                 images, labels_dict = data[0]['data'], data[0]['label']
-                images = images.to(device).to(torch.float16)
+                images = images.to(device).to(torch.float32)
                 labels = labels_dict.squeeze(-1).long().to(device)
 
                 outputs = model(images)
@@ -219,17 +226,35 @@ def trainer(config, data_dir = tiles_dir):
 
         log.info(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
-        checkpoint_data = {
-            "epoch": epoch,
-            "net_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
+        metrics = {
+            "mean_accuracy": epoch_acc,
+            "loss": epoch_loss,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_score,
+            "val_accuracy": val_epoch_acc,
+            "val_loss": val_loss / val_steps, 
+            "val_precision": val_precision,
+            "val_recall": val_recall,
+            "val_f1_score": val_f1_score
         }
-        checkpoint = Checkpoint.from_dict(checkpoint_data)
 
-        session.report(
-            {"loss": val_loss / val_steps, "accuracy": val_epoch_acc},
-            checkpoint=checkpoint,
-        )
+        # TODO: change to persistent dir:
+        # https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#persistent-storage-guide
+        with tempfile.TemporaryDirectory(dir=str(session_dir)) as tempdir:
+            if get_context().get_world_rank() == 0: # make sure only the no.1 worker manages the checkpoint
+                torch.save(
+                        {
+                        "epoch": epoch,
+                        "model_state": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                    },
+                    os.path.join(tempdir, "checkpoint.pt"),
+                )
+            session.report(
+                metrics=metrics,                              # accuracy etc..
+                checkpoint=Checkpoint.from_directory(tempdir) # creating a Checkpoint from tempdir
+            )
 
         if interrupted:
             log.info(f"KeyboardInterrupt received: saving model for session {tensorboard_session_name} and exiting")
@@ -242,21 +267,18 @@ def main():
     ########################
     # raytune search space #
     ########################
-
-    # search space
-    search_space = {
+    ray_search_config = {
         "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
         "momentum": tune.uniform(0.1, 0.9),
         "lr": tune.loguniform(1e-4, 1e-1),
-        "batch_size": 24,  # It is also ok to specify constant values. othwerwise max is 128 with AMP, 62 without
-        "gpus_per_trial": 1
+        "batch_size": 36
     }
 
     scheduler = ASHAScheduler(
         metric="loss",
         mode="min",
-        max_t=search_space.get("max_epochs"),
+        max_t=ray_search_config.get("max_epochs"),
         grace_period=1,
         reduction_factor=2,
     )
@@ -267,14 +289,26 @@ def main():
 
     hyperopt_search = HyperOptSearch(search_space, metric="mean_accuracy", mode="max")
 
+    ######################
+    # raytune init & run #
+    ######################
+    init(
+        resources={"cpu": 16, "gpu": 1},
+        logging_level='info',
+        include_dashboard=True
+        )
     tuner = tune.Tuner(
-        trainer,
-        tune_config=tune.TuneConfig(
-            num_samples=10,
-            search_alg=hyperopt_search,
-            scheduler=scheduler,
-            max_concurrent_trials=1
-        ),
+        tune.with_resources(
+            trainable=trainer, 
+            resources={"cpu": 16, "gpu": 1}),
+            param_space=ray_search_config,
+            run_config=RunConfig(storage_path=session_dir, name=train_session_name),
+            tune_config=tune.TuneConfig(
+                num_samples=10,
+                search_alg=HyperOptSearch(metric="mean_accuracy", mode="max"),
+                scheduler=scheduler,
+                max_concurrent_trials=1
+            ),
     )
 
     results = tuner.fit()
