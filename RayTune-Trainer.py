@@ -270,7 +270,11 @@ def main():
             trainable=trainer, 
             resources={"cpu": 16, "gpu": 1}),
             param_space=ray_search_config,
-            run_config=RunConfig(storage_path=session_dir, name=train_session_name),
+            run_config=RunConfig(
+                storage_path=session_dir, 
+                name=train_session_name,
+                log_to_file=True
+                ),
             tune_config=tune.TuneConfig(
                 num_samples=10,
                 search_alg=HyperOptSearch(metric="mean_accuracy", mode="max"),
