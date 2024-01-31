@@ -39,6 +39,7 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
     )
     images = fn.decoders.image(ims, device='cpu')
     images = fn.transpose(images, perm=[2, 0, 1])
+    images = fn.resize(images, size=[224, 224])
     return images, labels
 
 
@@ -117,7 +118,7 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
 #     next = __next__
 
 
-def dataloaders(tiles_dir, batch_size = 24):
+def dataloaders(tiles_dir, batch_size):
 
     ########################
     # read tiles with DALI #
@@ -125,7 +126,6 @@ def dataloaders(tiles_dir, batch_size = 24):
 
     # we make a 80-20 split by using 5 shards (splitting the images to 5 batches: each shard number refers to 20% of the data)
     num_shards = 5
-    train_shard_ids = list(range(4))  # Shards 0-3 for training
     val_shard_id = 4  # Shard 4 for validation
 
     files = []
@@ -135,7 +135,7 @@ def dataloaders(tiles_dir, batch_size = 24):
     assert len(wsi_folders) > 0, f"No wsi subfolders found under {tiles_dir}"
 
     for wsi_folder in wsi_folders:
-        filenames = [str(f) for f in Path(wsi_folder).glob("*.png")]
+        filenames = [str(f) for f in Path(wsi_folder).glob("*.jpg")]
         files.extend(filenames)
 
     labels = copy.deepcopy(files)
@@ -147,7 +147,7 @@ def dataloaders(tiles_dir, batch_size = 24):
         elif 'b' in l:
             labels[i] = 1
         else:
-            raise Exception(f"Error: cannot create classlabel from {label}. tile png does not have an 'a' or 'b' in filename.")
+            raise Exception(f"Error: cannot create classlabel from {label}. tile jpg does not have an 'a' or 'b' in filename.")
 
 
     train_pipelines = [train_pipeline(
@@ -156,9 +156,9 @@ def dataloaders(tiles_dir, batch_size = 24):
         shard_id=shard_seq, 
         num_shards=num_shards,
         batch_size=batch_size,
-        stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
+        stick_to_shard=False,   # if True, loads only one shard per epoch, otherwise the entire dataset
         num_threads=16,
-        device_id=0
+        device_id=0             # none is CPU, while 0 is GPU
     ) for shard_seq in range(num_shards)]
 
     val_pipeline = train_pipeline(
@@ -167,9 +167,9 @@ def dataloaders(tiles_dir, batch_size = 24):
         shard_id=val_shard_id, 
         num_shards=num_shards,
         batch_size=batch_size,
-        stick_to_shard=False, # if True, loads only one shard per epoch, otherwise the entire dataset
+        stick_to_shard=False,   # if True, loads only one shard per epoch, otherwise the entire dataset
         num_threads=16,
-        device_id=0
+        device_id=0             # none is CPU, while 0 is GPU
     )
 
     train_loader = DALIClassificationIterator(train_pipelines, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
