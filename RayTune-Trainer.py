@@ -12,7 +12,6 @@ import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # local
-import lib
 import dali_raytune_train
 import helpers.doublelogger as dl
 # pip
@@ -24,7 +23,6 @@ import tempfile
 from ray import tune, init
 from pathlib import Path
 from ray.air import session
-from datetime import datetime
 from ray.train import RunConfig
 from coolname import generate_slug
 from ray.train import Checkpoint, get_context
@@ -45,67 +43,66 @@ model_checkpoint_dir = base_dir / Path("training_checkpoints")
 model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 tiles_dir = base_dir / Path("tiles-train-500")
 
-##############################################################################################################
-# instantiate tensorboard summarywriter (write the run's data into random subdir with some random funny name)#
-##############################################################################################################
-tensorboard_session_name = generate_slug(2)
-tensorboard_log_dir = base_dir / "tensorboard_data" / tensorboard_session_name
-# user can customize the tensorboard folder
-user_input = lib.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
-user_input = lib.sanitize(user_input)
-print(f"Adding comment to tensorboard data: {user_input}")
-if user_input is not None:
-    if user_input != '':
-        tensorboard_session_name  = tensorboard_session_name + "-" + user_input
-        tensorboard_log_dir = base_dir / "tensorboard_data" / Path(tensorboard_session_name)
+############################################################################################################
+# instantiate ray-tune session folder (write the run's data into random subdir with some random funny name)#
+############################################################################################################
+train_session_name = generate_slug(2)
+session_dir = base_dir / "ray_sessions" / train_session_name
+# user can customize the session folder
+# user_input = lib.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
+# user_input = lib.sanitize(user_input)
+# print(f"Adding comment to tensorboard data: {user_input}")
+# if user_input is not None:
+#     if user_input != '':
+#         train_session_name  = train_session_name + "-" + user_input
+#         session_dir = base_dir / "ray_sessions" / Path(train_session_name)
 
-tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
+session_dir.mkdir(parents=True, exist_ok=True)
 
 
 #############################################
 # double logging to stdout and file as well #
 #############################################
-dl.setLogger(tensorboard_log_dir / Path("logs.txt"))
+dl.setLogger(session_dir / Path("logs.txt"))
 log = logging.getLogger("spl")
 start_time = time.time()
-log.info(f"tensorboard session {tensorboard_session_name} started at {datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')}")
 
-############################################$###########
-# KeyboardInterrupt: stop training and save checkpoint #
-#############################################$$#########
-
-# global KeyboardInterrupt Flag
-global interrupted
+####################################
+# KeyboardInterrupt: stop training #
+####################################
+global interrupted # global KeyboardInterrupt Flag
 interrupted = False
-# signal handler
 def signal_handler(signum, frame):
     global interrupted
     interrupted = True
     log.info("Interrupt received, stopping...")
-# attach signal handler
-signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGINT, signal_handler) # attach
 
 
-def trainer(config, data_dir = tiles_dir):
+###############################
+# definition of the trainable #
+###############################
+def trainer(config, data_dir=tiles_dir):
+
+
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(data_dir, batch_size=24)
+    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=config.get('batch_size'))
+
 
     ####################
     # model definition #
     ####################
-
     model = se_resnext101_32x4d(
         pretrained=True
     )
-
-    ##################
-    # begin training #
-    ##################
-
     model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
 
+
+    ###################
+    # model to device #
+    ###################
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     log.info(f"Using {device}")
     # make sure we use cudnn
@@ -140,12 +137,6 @@ def trainer(config, data_dir = tiles_dir):
     # train
     total_step = dataset_size # full training dataset len
     val_steps = 0
-
-    time_elapsed = time.time() - start_time
-    log.info('training prep completed in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-    start_time = time.time()
-    training_start = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
-    log.info(f"training started at {training_start}")
 
     for epoch in range(start_epoch, config.get('max_epochs')):
 
@@ -257,7 +248,7 @@ def trainer(config, data_dir = tiles_dir):
             )
 
         if interrupted:
-            log.info(f"KeyboardInterrupt received: saving model for session {tensorboard_session_name} and exiting")
+            log.info(f"KeyboardInterrupt received: quitting training session(s)")
             break
         # end of epoch run (identation!)
 
@@ -274,7 +265,6 @@ def main():
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": 36
     }
-
     scheduler = ASHAScheduler(
         metric="loss",
         mode="min",
@@ -283,11 +273,6 @@ def main():
         reduction_factor=2,
     )
 
-    ###############
-    # raytune run #
-    ###############
-
-    hyperopt_search = HyperOptSearch(search_space, metric="mean_accuracy", mode="max")
 
     ######################
     # raytune init & run #
@@ -310,7 +295,6 @@ def main():
                 max_concurrent_trials=1
             ),
     )
-
     results = tuner.fit()
 
     # At each trial, Ray Tune will now randomly sample a combination of parameters from these search spaces. 
