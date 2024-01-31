@@ -149,13 +149,13 @@ def trainer(config, data_dir=tiles_dir):
             images = images.to(device).to(torch.float32)
             labels = labels_dict.squeeze(-1).long().to(device)
 
-            # backward and optimize
-            optimizer.zero_grad()
-
             # forward pass
             outputs = model(images)
             loss = criterion(outputs, labels)
-
+            
+            # backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
             optimizer.step()
 
             running_loss += loss.item()
