@@ -48,15 +48,6 @@ tiles_dir = base_dir / Path("tiles-train-500")
 ############################################################################################################
 train_session_name = generate_slug(2)
 session_dir = base_dir / "ray_sessions" / train_session_name
-# user can customize the session folder
-# user_input = lib.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
-# user_input = lib.sanitize(user_input)
-# print(f"Adding comment to tensorboard data: {user_input}")
-# if user_input is not None:
-#     if user_input != '':
-#         train_session_name  = train_session_name + "-" + user_input
-#         session_dir = base_dir / "ray_sessions" / Path(train_session_name)
-
 session_dir.mkdir(parents=True, exist_ok=True)
 
 
