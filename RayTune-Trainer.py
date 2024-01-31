@@ -70,6 +70,23 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler) # attach
 
 
+def save_checkpoint(epoch, model, optimizer, session_dir, metrics):
+    with tempfile.TemporaryDirectory(dir=str(session_dir)) as tempdir:
+        if get_context().get_world_rank() == 0: # make sure only the no.1 worker manages the checkpoint
+            torch.save(
+                    {
+                    "epoch": epoch,
+                    "model_state": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                },
+                os.path.join(tempdir, "checkpoint.pt"),
+            )
+        session.report(
+            metrics=metrics,                              # accuracy etc..
+            checkpoint=Checkpoint.from_directory(tempdir) # creating a Checkpoint from tempdir
+        )
+
+
 ###############################
 # definition of the trainable #
 ###############################
@@ -221,25 +238,13 @@ def trainer(config, data_dir=tiles_dir):
             "val_f1_score": val_f1_score
         }
 
-        # TODO: change to persistent dir:
+        # TODO: persistent dir not really working so needed to be done
         # https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#persistent-storage-guide
-        with tempfile.TemporaryDirectory(dir=str(session_dir)) as tempdir:
-            if get_context().get_world_rank() == 0: # make sure only the no.1 worker manages the checkpoint
-                torch.save(
-                        {
-                        "epoch": epoch,
-                        "model_state": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                    },
-                    os.path.join(tempdir, "checkpoint.pt"),
-                )
-            session.report(
-                metrics=metrics,                              # accuracy etc..
-                checkpoint=Checkpoint.from_directory(tempdir) # creating a Checkpoint from tempdir
-            )
+        save_checkpoint(epoch, model, optimizer, session_dir, metrics)
 
         if interrupted:
             log.info(f"KeyboardInterrupt received: quitting training session(s)")
+            save_checkpoint(epoch, model, optimizer, session_dir, metrics)
             break
         # end of epoch run (identation!)
 
