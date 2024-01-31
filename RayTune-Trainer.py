@@ -154,8 +154,7 @@ def trainer(config, data_dir=tiles_dir):
         all_labels = []
         all_predictions = []
 
-        for i, data in enumerate(train_loader):
-            running_loss = 0.0
+        for data in train_loader:
             epoch_steps = 0
 
             images, labels_dict = data[0]['data'], data[0]['label']
@@ -171,15 +170,7 @@ def trainer(config, data_dir=tiles_dir):
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item()
             epoch_steps += 1
-            if i % 2000 == 1999:  # print every 2000 mini-batches
-                print(
-                    "[%d, %5d] loss: %.3f"
-                    % (epoch + 1, i + 1, running_loss / epoch_steps)
-                )
-                running_loss = 0.0
-
             total_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
