@@ -7,30 +7,25 @@
 ##########################################################################################################
 
 
-# imports
-import os
-if os.name == "nt":
-    import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # local
 import dali_raytune_train
-import helpers.doublelogger as dl
-# pip
-import torch
-import signal
-import tempfile
-from ray import tune, init
-from pathlib import Path
-from ray.air import session
-from ray.train import RunConfig
-from coolname import generate_slug
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from ray.train import Checkpoint, get_context
-from ray.tune.schedulers import ASHAScheduler
-from ray.tune.search.hyperopt import HyperOptSearch
-from sklearn.metrics import precision_recall_fscore_support
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
 )
+# pip & std
+import os
+import torch
+import signal
+from pathlib import Path
+from ray import tune, init
+from ray.air import session
+from coolname import generate_slug
+from ray.train import RunConfig, get_context
+from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.hyperopt import HyperOptSearch
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.metrics import precision_recall_fscore_support
+
 
 #####################
 # configure folders #
@@ -67,7 +62,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": lr_scheduler.state_dict(),
         }
-        if epoch >= 0:
+        if epoch > 4:
             checkpoint_data["model_state"] = model.state_dict()
         checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{epoch}.ckpt")
         torch.save(checkpoint_data,checkpoint_file)
@@ -110,7 +105,12 @@ def trainer(config, data_dir=tiles_dir):
     # loss and optimizer #
     ######################
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=config.get('momentum'))
+    optimizer = torch.optim.SGD(
+        model.parameters(), 
+        lr=config.get('lr'), 
+        nesterov=config.get('nesterov'), 
+        momentum=config.get('momentum')
+    )
 
     #############################################
     # ReduceLROnPlateau learning rate scheduler #
@@ -123,21 +123,20 @@ def trainer(config, data_dir=tiles_dir):
         patience=3,
         eps=1e-7,
         threshold=1e-4
-        )
+    )
 
-    #########################
-    # raytune checkpointing #
-    #########################
+    ######################################################
+    # raytune fine-tuner (loading state from checkpoint) #
+    ######################################################
     # https://docs.ray.io/en/latest/train/user-guides/checkpoints.html
-    checkpoint = session.get_checkpoint()
-
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            checkpoint_dict = torch.load(
-                os.path.join(checkpoint_dir, "checkpoint.pt")
-                )
+    
+    checkpoint_file = None # set the desired state checkpoint 
+    # TODO: this needs to be tested
+    if session.get_checkpoint() and checkpoint_file is not None:
+        checkpoint_dict = torch.load(checkpoint_file)
+        if checkpoint_dict.get("model_state", None) is not None:
             start_epoch = checkpoint_dict["epoch"] + 1
-            model.load_state_dict(checkpoint_dict["model_state"])
+            model.load_state_dict(checkpoint_dict.get("model_state", None))
             optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
             lr_scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
     else:
@@ -237,11 +236,25 @@ def trainer(config, data_dir=tiles_dir):
 
         # TODO: for some reason it is logging into 2 directories...
         # https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#persistent-storage-guide
-        save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
+        save_checkpoint(
+            epoch, 
+            model, 
+            optimizer, 
+            lr_scheduler, 
+            session_dir, 
+            metrics
+        )
 
         if interrupted:
             print(f"KeyboardInterrupt received: quitting training session(s)")
-            save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
+            save_checkpoint(
+                epoch, 
+                model, 
+                optimizer, 
+                lr_scheduler, 
+                session_dir, 
+                metrics
+            )
             break
         # end of epoch run (identation!)
 
@@ -274,7 +287,7 @@ def main():
         resources={"cpu": 16, "gpu": 1},
         logging_level='info',
         include_dashboard=True
-        )
+    )
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
@@ -283,13 +296,13 @@ def main():
             run_config=RunConfig(
                 storage_path=session_dir,
                 log_to_file=True
-                ),
+            ),
             tune_config=tune.TuneConfig(
                 num_samples=10,
                 search_alg=HyperOptSearch(metric="mean_accuracy", mode="max"),
                 scheduler=scheduler,
                 max_concurrent_trials=1
-            ),
+            )
     )
     results = tuner.fit()
 
