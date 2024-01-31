@@ -117,7 +117,7 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
 #     next = __next__
 
 
-def dataloaders(tiles_dir, batch_size):
+def dataloaders(tiles_dir, batch_size = 24):
 
     ########################
     # read tiles with DALI #
