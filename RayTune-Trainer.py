@@ -23,12 +23,11 @@ from pathlib import Path
 from ray.air import session
 from ray.train import RunConfig
 from coolname import generate_slug
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from ray.train import Checkpoint, get_context
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.hyperopt import HyperOptSearch
 from sklearn.metrics import precision_recall_fscore_support
-
-
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
 )
@@ -112,6 +111,18 @@ def trainer(config, data_dir=tiles_dir):
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=config.get('momentum'))
 
+    #############################################
+    # ReduceLROnPlateau learning rate scheduler #
+    #############################################
+    lr_scheduler = ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        min_lr=1e-4, 
+        patience=3,
+        eps=1e-7,
+        verbose=True
+        )
+
     #########################
     # raytune checkpointing #
     #########################
@@ -177,9 +188,10 @@ def trainer(config, data_dir=tiles_dir):
         epoch_loss = total_loss / total_step
         epoch_acc = total_correct / total
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
+        curr_lr = lr_scheduler.get_last_lr()[0]
 
         # show stats at the end of epoch
-        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
+        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}, LR: {curr_lr:.5f}")
         
         val_loss = 0
         val_correct = 0
@@ -210,6 +222,9 @@ def trainer(config, data_dir=tiles_dir):
         val_epoch_acc = val_correct / val_total
         val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
+        # schedule lr based on val loss
+        lr_scheduler.step(val_loss / val_steps)
+
         print(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         metrics = {
@@ -222,7 +237,8 @@ def trainer(config, data_dir=tiles_dir):
             "val_loss": val_loss / val_steps, 
             "val_precision": val_precision,
             "val_recall": val_recall,
-            "val_f1_score": val_f1_score
+            "val_f1_score": val_f1_score,
+            "learning_rate": curr_lr
         }
 
         # TODO: persistent dir not really working so needed to be done
