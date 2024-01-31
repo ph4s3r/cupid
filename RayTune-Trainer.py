@@ -244,8 +244,8 @@ def main():
     ray_search_config = {
         "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
-        "momentum": tune.uniform(0.5, 0.95),
-        "lr": tune.loguniform(1e-4, 1e-1),
+        "momentum": tune.uniform(0.8, 0.95),
+        "lr": tune.loguniform(0.03, 0.04),
         "batch_size": 36
     }
     scheduler = ASHAScheduler(
