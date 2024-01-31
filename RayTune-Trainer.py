@@ -106,7 +106,7 @@ def trainer(config, data_dir=tiles_dir):
     # loss and optimizer #
     ######################
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=config.get('lr'), nesterov=config.get('nesterov'), momentum=config.get('momentum'))
 
     #########################
     # raytune checkpointing #
@@ -252,7 +252,7 @@ def main():
     ray_search_config = {
         "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
-        "momentum": tune.uniform(0.1, 0.9),
+        "momentum": tune.uniform(0.5, 0.95),
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": 36
     }
