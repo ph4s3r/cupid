@@ -60,21 +60,22 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGINT, signal_handler) # attach
 
 
-def save_checkpoint(epoch, model, optimizer, session_dir, metrics):
-    with tempfile.TemporaryDirectory(dir=str(session_dir)) as tempdir:
-        if get_context().get_world_rank() == 0: # make sure only the no.1 worker manages the checkpoint
-            torch.save(
-                    {
-                    "epoch": epoch,
-                    "model_state": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                },
-                os.path.join(tempdir, "checkpoint.pt"),
-            )
-        session.report(
-            metrics=metrics,                              # accuracy etc..
-            checkpoint=Checkpoint.from_directory(tempdir) # creating a Checkpoint from tempdir
-        )
+def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics):
+    if get_context().get_world_rank() is None or get_context().get_world_rank() == 0: # only the no.1 worker manages checkpoints
+        checkpoint_data = {
+            "epoch": epoch,
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": lr_scheduler.state_dict(),
+        }
+        if epoch >= 0:
+            checkpoint_data["model_state"] = model.state_dict()
+        checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{epoch}.ckpt")
+        torch.save(checkpoint_data,checkpoint_file)
+        print(f"model checkpoint saved as {checkpoint_file}")
+    
+    session.report(
+        metrics=metrics
+    )
 
 
 ###############################
@@ -138,13 +139,14 @@ def trainer(config, data_dir=tiles_dir):
             start_epoch = checkpoint_dict["epoch"] + 1
             model.load_state_dict(checkpoint_dict["model_state"])
             optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
+            lr_scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
     else:
         start_epoch = 0
     
     # train
     total_step = dataset_size # full training dataset len
 
-    for epoch in range(start_epoch, config.get('max_epochs')):
+    for epoch in range(start_epoch, config.get('max_epochs', 120)):
 
         total_loss = 0
         total_correct = 0
@@ -192,8 +194,6 @@ def trainer(config, data_dir=tiles_dir):
             curr_lr = lr_scheduler.get_last_lr()[0]
         else:
             curr_lr = config.get("lr")
-        # show stats at the end of epoch
-        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
         
         val_batches_processed = 0
         val_loss = 0
@@ -244,13 +244,13 @@ def trainer(config, data_dir=tiles_dir):
             "learning_rate": curr_lr
         }
 
-        # TODO: persistent dir not really working so needed to be done
+        # TODO: for some reason it is logging into 2 directories...
         # https://docs.ray.io/en/latest/train/user-guides/persistent-storage.html#persistent-storage-guide
-        save_checkpoint(epoch, model, optimizer, session_dir, metrics)
+        save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 
         if interrupted:
             print(f"KeyboardInterrupt received: quitting training session(s)")
-            save_checkpoint(epoch, model, optimizer, session_dir, metrics)
+            save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
             break
         # end of epoch run (identation!)
 
@@ -290,8 +290,7 @@ def main():
             resources={"cpu": 16, "gpu": 1}),
             param_space=ray_search_config,
             run_config=RunConfig(
-                storage_path=session_dir, 
-                name=train_session_name,
+                storage_path=session_dir,
                 log_to_file=True
                 ),
             tune_config=tune.TuneConfig(
