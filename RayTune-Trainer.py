@@ -15,10 +15,8 @@ if os.name == "nt":
 import dali_raytune_train
 import helpers.doublelogger as dl
 # pip
-import time
 import torch
 import signal
-import logging
 import tempfile
 from ray import tune, init
 from pathlib import Path
@@ -51,13 +49,6 @@ session_dir = base_dir / "ray_sessions" / train_session_name
 session_dir.mkdir(parents=True, exist_ok=True)
 
 
-#############################################
-# double logging to stdout and file as well #
-#############################################
-dl.setLogger(session_dir / Path("logs.txt"))
-log = logging.getLogger("spl")
-start_time = time.time()
-
 ####################################
 # KeyboardInterrupt: stop training #
 ####################################
@@ -66,7 +57,7 @@ interrupted = False
 def signal_handler(signum, frame):
     global interrupted
     interrupted = True
-    log.info("Interrupt received, stopping...")
+    print("Interrupt received, stopping...")
 signal.signal(signal.SIGINT, signal_handler) # attach
 
 
@@ -112,7 +103,7 @@ def trainer(config, data_dir=tiles_dir):
     # model to device #
     ###################
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    log.info(f"Using {device}")
+    print(f"Using {device}")
     model = model.to(device)
 
     ######################
@@ -188,7 +179,7 @@ def trainer(config, data_dir=tiles_dir):
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
 
         # show stats at the end of epoch
-        log.info(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
+        print(f"Training - Epoch {epoch+1}/{config.get('max_epochs')} Steps {i+1} - Loss: {epoch_loss:.6f}, Acc: {epoch_acc:.6f}, Precision: {precision:.6f}, Recall: {recall:.6f}, F1: {f1_score:.6f}")
         
         val_loss = 0
         val_correct = 0
@@ -219,7 +210,7 @@ def trainer(config, data_dir=tiles_dir):
         val_epoch_acc = val_correct / val_total
         val_precision, val_recall, val_f1_score, _ = precision_recall_fscore_support(val_all_labels, val_all_predictions, labels=[0,1], average='weighted')
 
-        log.info(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
+        print(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         metrics = {
             "mean_accuracy": epoch_acc,
@@ -239,7 +230,7 @@ def trainer(config, data_dir=tiles_dir):
         save_checkpoint(epoch, model, optimizer, session_dir, metrics)
 
         if interrupted:
-            log.info(f"KeyboardInterrupt received: quitting training session(s)")
+            print(f"KeyboardInterrupt received: quitting training session(s)")
             save_checkpoint(epoch, model, optimizer, session_dir, metrics)
             break
         # end of epoch run (identation!)
