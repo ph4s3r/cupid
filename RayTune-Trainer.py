@@ -15,7 +15,6 @@ from nvidia_resnets.resnet import (
 # pip & std
 import os
 import torch
-import signal
 from pathlib import Path
 from ray import tune, init
 from ray.air import session
@@ -42,18 +41,6 @@ tiles_dir = base_dir / Path("tiles-train-500")
 train_session_name = generate_slug(2)
 session_dir = base_dir / "ray_sessions" / train_session_name
 session_dir.mkdir(parents=True, exist_ok=True)
-
-
-####################################
-# KeyboardInterrupt: stop training #
-####################################
-global interrupted # global KeyboardInterrupt Flag
-interrupted = False
-def signal_handler(signum, frame):
-    global interrupted
-    interrupted = True
-    print("Interrupt received, stopping...")
-signal.signal(signal.SIGINT, signal_handler) # attach
 
 
 def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics):
@@ -246,17 +233,6 @@ def trainer(config, data_dir=tiles_dir):
             metrics
         )
 
-        if interrupted:
-            print(f"KeyboardInterrupt received: quitting training session(s)")
-            save_checkpoint(
-                epoch, 
-                model, 
-                optimizer, 
-                lr_scheduler, 
-                session_dir, 
-                metrics
-            )
-            break
         # end of epoch run (identation!)
 
 
