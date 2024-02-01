@@ -19,9 +19,9 @@ from pathlib import Path
 from ray import tune, init
 from ray.air import session
 from coolname import generate_slug
+from ray.tune import ProgressReporter
 from ray.train import RunConfig, get_context
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.stopper import TrialPlateauStopper
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -274,20 +274,34 @@ def main():
         metric="mean_accuracy",
         mode="max",
         std=0.005,
-        num_results = 4,
-        grace_period= 4,    
+        num_results=4,
+        grace_period=4,    
     )
-    # TODO: need to log when it stops training as the termination reason    
 
 
-    ######################
-    # raytune init & run #
-    ######################
+    class CustomReporter(ProgressReporter):
+
+        def should_report(self, trials, done=True):
+            return done
+
+        def report(self, trials, *sys_info):
+            print("**********************************************")
+            print("***************ProgressReporter***************")
+            print(*sys_info)
+            print("\\n".join([str(trial) for trial in trials]))
+            print("**********************************************")
+            print("**********************************************")
+
+
+    #################
+    # init ray-tune #
+    #################
     init(
         resources={"cpu": 16, "gpu": 1},
         logging_level='info',
-        include_dashboard=True
+        include_dashboard=False
     )
+
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
@@ -297,39 +311,36 @@ def main():
                 storage_path=session_dir,
                 log_to_file=True,
                 stop=acc_plateau_stopper,
+                progress_reporter=CustomReporter(),
+                verbose=2,
             ),
             tune_config=tune.TuneConfig(
-                num_samples=10,
+                num_samples=100,
                 search_alg=search_alg,
-                scheduler=scheduler
+                scheduler=scheduler,
+                max_concurrent_trials=1
             )
     )
 
     ###############################
     # can resume saved experiment #
     ###############################
-    experiment_path = None # Path("/mnt/bigdata/placenta/ray_sessions/scarlet-ape")
-
+    experiment_path = None # "/mnt/bigdata/placenta/ray_sessions/uber-dolphin/trainer_2024-02-01_20-32-32" # path should be where the .pkl file is
     if experiment_path is not None:
         print(f"resuming experiment from {experiment_path}")
-        tuner.restore(
-            path=experiment_path
-            )
-    else:
-      ######################
-      # run new experiment #
-      ######################
-        results = tuner.fit()
+        tuner = tune.Tuner.restore(path=experiment_path, trainable=trainer)
 
-    # At each trial, Ray Tune will now randomly sample a combination of parameters from these search spaces. 
-    # It will then train a number of models in parallel and find the best performing one among these. 
-    # We also use the ASHAScheduler which will terminate bad performing trials early.
-
+    ##################
+    # run experiment #
+    ##################
+    results = tuner.fit()
     best_trial = results.get_best_result(
         metric="val_accuracy", 
         mode="min", 
         scope="all"
     )
+
+    print(results.get_dataframe())
 
     print(f"Best trial selected by val_accuracy: ")
     print(f"config: {best_trial.config}")
@@ -339,7 +350,5 @@ def main():
     except:
         pass
     
-
-
 if __name__ == "__main__":
     main()
