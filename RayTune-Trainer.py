@@ -16,12 +16,12 @@ from nvidia_resnets.resnet import (
 # pip & std
 import os
 import torch
+import pandas as pd
 from pathlib import Path
-from ray import tune, init
+from ray import tune, init, train
 from ray.air import session
 from coolname import generate_slug
 from ray.tune import ProgressReporter
-from ray.train import RunConfig, get_context
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.stopper import TrialPlateauStopper
@@ -33,20 +33,22 @@ from sklearn.metrics import precision_recall_fscore_support
 # configure folders #
 #####################
 base_dir = Path("/mnt/bigdata/placenta")
-model_checkpoint_dir = base_dir / Path("training_checkpoints")
-model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 tiles_dir = base_dir / Path("tiles-train-500")
 
-############################################################################################################
-# instantiate ray-tune session folder (write the run's data into random subdir with some random funny name)#
-############################################################################################################
+
+##########################################
+# instantiate ray-tune experiment folder #
+##########################################
 train_session_name = generate_slug(2)
 session_dir = base_dir / "ray_sessions" / train_session_name
 session_dir.mkdir(parents=True, exist_ok=True)
 
 
+################################
+# function to save checkpoints #
+################################
 def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics):
-    if get_context().get_world_rank() is None or get_context().get_world_rank() == 0: # only the no.1 worker manages checkpoints
+    if train.get_context().get_world_rank() is None or train.get_context().get_world_rank() == 0: # only the no.1 worker manages checkpoints
         checkpoint_data = {
             "epoch": epoch,
             "optimizer_state_dict": optimizer.state_dict(),
@@ -67,8 +69,6 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 # definition of the trainable #
 ###############################
 def trainer(config, data_dir=tiles_dir):
-
-
     ########################
     # read tiles with DALI #
     ########################
@@ -82,11 +82,6 @@ def trainer(config, data_dir=tiles_dir):
         pretrained=True
     )
     model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
-
-
-    ###################
-    # model to device #
-    ###################
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using {device}")
     model = model.to(device)
@@ -284,7 +279,7 @@ def main():
 
     class CustomReporter(ProgressReporter):
 
-        def should_report(self, trials, done=True):
+        def should_report(self, trials, done=False):
             return done
 
         def report(self, trials, *sys_info):
@@ -316,13 +311,13 @@ def main():
                 log_to_file=True,
                 stop=acc_plateau_stopper,
                 progress_reporter=CustomReporter(),
-                verbose=2,
+                verbose=3,
             ),
             tune_config=tune.TuneConfig(
                 num_samples=100,
                 search_alg=search_alg,
                 scheduler=scheduler,
-                max_concurrent_trials=1
+                max_concurrent_trials=2
             )
     )
 
@@ -343,7 +338,7 @@ def main():
         mode="min", 
         scope="all"
     )
-
+    pd.set_option('display.max_columns', None)
     print(results.get_dataframe())
 
     print(f"Best trial selected by val_accuracy: ")
