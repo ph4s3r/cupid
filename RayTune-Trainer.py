@@ -56,9 +56,9 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
         }
         if epoch > 4:
             checkpoint_data["model_state"] = model.state_dict()
-        checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
-        torch.save(checkpoint_data,checkpoint_file)
-        print(f"model checkpoint saved as {checkpoint_file}")
+            checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
+            torch.save(checkpoint_data,checkpoint_file)
+            print(f"model checkpoint saved as {checkpoint_file}")
     
     session.report(
         metrics=metrics
@@ -72,7 +72,7 @@ def trainer(config, data_dir=tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, dataset_size = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=config.get('batch_size'))
+    train_loader, val_loader, _ = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=config.get('batch_size'))
 
 
     ####################
@@ -128,10 +128,6 @@ def trainer(config, data_dir=tiles_dir):
     else:
         start_epoch = 0
 
-    
-    # train
-    total_step = dataset_size # full training dataset len
-
     for epoch in range(start_epoch, config.get('max_epochs', 120)):
 
         total_loss = 0
@@ -164,7 +160,7 @@ def trainer(config, data_dir=tiles_dir):
             all_labels.extend(labels.cpu().numpy())
             all_predictions.extend(predicted.cpu().numpy())     
 
-        epoch_loss = total_loss / total_step
+        epoch_loss = total_loss / epoch_steps
         epoch_acc = total_correct / total
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
         if epoch > 1:
@@ -249,10 +245,10 @@ def main():
     }
 
     scheduler = ASHAScheduler(
-        metric="loss",
-        mode="min",
+        metric="val_accuracy",
+        mode="max",
         max_t=ray_search_config.get("max_epochs"),
-        grace_period=1,
+        grace_period=4,
         reduction_factor=2,
     )
 
@@ -263,22 +259,22 @@ def main():
     }]
 
     search_alg = HyperOptSearch(
-        metric="mean_accuracy", 
+        metric="val_accuracy", 
         mode="max",
         points_to_evaluate=current_best_params
         )
     
     acc_plateau_stopper = TrialPlateauStopper(
-        metric="mean_accuracy",
-        mode="max",
+        metric="val_accuracy",
+        mode="max", # ?
         std=0.005,
         num_results=4,
-        grace_period=4,    
+        grace_period=4,
     )
 
 
     class CustomReporter(ProgressReporter):
-
+        # this only works with RAY_AIR_NEW_OUTPUT=0 (AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now.)
         def should_report(self, trials, done=False):
             return done
 
@@ -317,8 +313,8 @@ def main():
                 num_samples=100,
                 search_alg=search_alg,
                 scheduler=scheduler,
-                max_concurrent_trials=2
-            )
+            max_concurrent_trials=1
+        )
     )
 
     ###############################
