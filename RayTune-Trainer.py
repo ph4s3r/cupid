@@ -307,7 +307,8 @@ def main():
             trainable=trainer, 
             resources={"cpu": 16, "gpu": 1}),
             param_space=ray_search_config,
-            run_config=RunConfig(
+            run_config=train.RunConfig(
+                checkpoint_config=train.CheckpointConfig(num_to_keep=2),
                 storage_path=session_dir,
                 log_to_file=True,
                 stop=acc_plateau_stopper,
