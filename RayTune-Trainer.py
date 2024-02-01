@@ -22,6 +22,7 @@ from ray.air import session
 from coolname import generate_slug
 from ray.train import RunConfig, get_context
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support
@@ -279,6 +280,24 @@ def main():
         reduction_factor=2,
     )
 
+    current_best_params = [{
+        "nesterov": False,
+        "momentum": 0.8,
+        "lr": 0.04,
+    }]
+
+    search_alg = HyperOptSearch(
+        metric="mean_accuracy", 
+        mode="max",
+        points_to_evaluate=current_best_params
+        )
+
+    search_alg = ConcurrencyLimiter(
+        search_alg, 
+        max_concurrent=1 # no concurrency (not enough vram / debug needs)
+    )
+        
+
 
     ######################
     # raytune init & run #
@@ -299,7 +318,7 @@ def main():
             ),
             tune_config=tune.TuneConfig(
                 num_samples=10,
-                search_alg=HyperOptSearch(metric="mean_accuracy", mode="max"),
+                search_alg=search_alg,
                 scheduler=scheduler,
                 max_concurrent_trials=1
             )
