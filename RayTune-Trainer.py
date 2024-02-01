@@ -330,10 +330,20 @@ def main():
     # It will then train a number of models in parallel and find the best performing one among these. 
     # We also use the ASHAScheduler which will terminate bad performing trials early.
 
-    best_trial = results.get_best_trial("loss", "min", "last")
-    print(f"Best trial config: {best_trial.config}")
-    print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
-    print(f"Best trial final validation accuracy: {best_trial.last_result['accuracy']}")
+    best_trial = results.get_best_result(
+        metric="val_accuracy", 
+        mode="min", 
+        scope="all"
+    )
+
+    print(f"Best trial selected by val_accuracy: ")
+    print(f"config: {best_trial.config}")
+    try:
+        print(f"path: {best_trial.path}")
+        print(f"Best checkpoints: {best_trial.best_checkpoints}") # can get it with get_best_checkpoint
+    except:
+        pass
+    
 
 
 if __name__ == "__main__":
