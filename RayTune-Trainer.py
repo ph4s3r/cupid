@@ -8,6 +8,7 @@
 
 
 # local
+import lib
 import dali_raytune_train
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
@@ -114,22 +115,24 @@ def trainer(config, data_dir=tiles_dir):
         threshold=1e-4
     )
 
-    ######################################################
-    # raytune fine-tuner (loading state from checkpoint) #
-    ######################################################
-    # https://docs.ray.io/en/latest/train/user-guides/checkpoints.html
-    
-    checkpoint_file = None # set the desired state checkpoint 
-    # TODO: this needs to be tested
-    if session.get_checkpoint() and checkpoint_file is not None:
-        checkpoint_dict = torch.load(checkpoint_file)
-        if checkpoint_dict.get("model_state", None) is not None:
-            start_epoch = checkpoint_dict["epoch"] + 1
-            model.load_state_dict(checkpoint_dict.get("model_state", None))
-            optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
-            lr_scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
+    #####################
+    # checkpoint loader #
+    #####################
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            
+            checkpoint_dict = torch.load(
+                os.path.join(lib.find_latest_file(checkpoint_dir, '*.ckpt')),
+                )
+            if checkpoint_dict.get("model_state", None) is not None:
+                start_epoch = checkpoint_dict["epoch"] + 1
+                model.load_state_dict(checkpoint_dict.get("model_state", None))
+                optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
+                lr_scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
     else:
         start_epoch = 0
+
     
     # train
     total_step = dataset_size # full training dataset len
