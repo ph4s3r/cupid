@@ -23,7 +23,7 @@ from ray.train import RunConfig, get_context
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.stopper import ExperimentPlateauStopper
+from ray.tune.stopper import TrialPlateauStopper
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -270,19 +270,14 @@ def main():
         points_to_evaluate=current_best_params
         )
     
-    search_alg = ConcurrencyLimiter(
-        search_alg, 
-        max_concurrent=1 # no concurrency (not enough vram anyway)
-    )
-
-    acc_plateau_stopper = ExperimentPlateauStopper(
+    acc_plateau_stopper = TrialPlateauStopper(
         metric="mean_accuracy",
         mode="max",
-        std=0.01,
-        top=5,
-        patience=5
+        std=0.005,
+        num_results = 4,
+        grace_period= 4,    
     )
-        
+    # TODO: need to log when it stops training as the termination reason    
 
 
     ######################
