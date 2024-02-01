@@ -23,6 +23,7 @@ from ray.train import RunConfig, get_context
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.stopper import ExperimentPlateauStopper
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -248,6 +249,7 @@ def main():
         "lr": tune.loguniform(0.04, 0.05),
         "batch_size": 36
     }
+
     scheduler = ASHAScheduler(
         metric="loss",
         mode="min",
@@ -270,7 +272,15 @@ def main():
 
     search_alg = ConcurrencyLimiter(
         search_alg, 
-        max_concurrent=1 # no concurrency (not enough vram / debug needs)
+        max_concurrent=1 # no concurrency (not enough vram anyway)
+    )
+
+    acc_plateau_stopper = ExperimentPlateauStopper(
+        metric="mean_accuracy",
+        mode="max",
+        std=0.01,
+        top=5,
+        patience=5
     )
         
 
@@ -290,7 +300,8 @@ def main():
             param_space=ray_search_config,
             run_config=RunConfig(
                 storage_path=session_dir,
-                log_to_file=True
+                log_to_file=True,
+                stop=acc_plateau_stopper,
             ),
             tune_config=tune.TuneConfig(
                 num_samples=10,
