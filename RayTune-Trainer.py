@@ -53,7 +53,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
         }
         if epoch > 4:
             checkpoint_data["model_state"] = model.state_dict()
-        checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{epoch}.ckpt")
+        checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
         torch.save(checkpoint_data,checkpoint_file)
         print(f"model checkpoint saved as {checkpoint_file}")
     
@@ -269,7 +269,7 @@ def main():
         mode="max",
         points_to_evaluate=current_best_params
         )
-
+    
     search_alg = ConcurrencyLimiter(
         search_alg, 
         max_concurrent=1 # no concurrency (not enough vram anyway)
@@ -306,11 +306,25 @@ def main():
             tune_config=tune.TuneConfig(
                 num_samples=10,
                 search_alg=search_alg,
-                scheduler=scheduler,
-                max_concurrent_trials=1
+                scheduler=scheduler
             )
     )
-    results = tuner.fit()
+
+    ###############################
+    # can resume saved experiment #
+    ###############################
+    experiment_path = None # Path("/mnt/bigdata/placenta/ray_sessions/scarlet-ape")
+
+    if experiment_path is not None:
+        print(f"resuming experiment from {experiment_path}")
+        tuner.restore(
+            path=experiment_path
+            )
+    else:
+      ######################
+      # run new experiment #
+      ######################
+        results = tuner.fit()
 
     # At each trial, Ray Tune will now randomly sample a combination of parameters from these search spaces. 
     # It will then train a number of models in parallel and find the best performing one among these. 
