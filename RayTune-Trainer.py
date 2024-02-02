@@ -1,9 +1,9 @@
 ##########################################################################################################
-# Author: Mihaly Sulyok & Peter Karacsonyi                                                               #
-# Last updated: 2024 jan 17                                                                              #
+# Author: Peter Karacsonyi                                                                               #
+# Last updated: 2024 feb 2                                                                               #
 # Training model                                                                                         #
-# Input: directory containing wsi-named directories with the jpg tile files                              #
-# Output: model weights, optimizer, metrics (tensorboard)                                                #
+# Input: training and validation data from a dataloader                                                  #
+# Output: raytune experiment, a lot of trials, hopefully the best hyperparams then                       #
 ##########################################################################################################
 
 
@@ -16,7 +16,6 @@ from nvidia_resnets.resnet import (
 # pip & std
 import os
 import torch
-import pandas as pd
 from pathlib import Path
 from ray import tune, init, train
 from ray.air import session
@@ -57,7 +56,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
         if epoch > 4:
             checkpoint_data["model_state"] = model.state_dict()
             checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
-            torch.save(checkpoint_data,checkpoint_file)
+            torch.save(checkpoint_data, checkpoint_file)
             print(f"model checkpoint saved as {checkpoint_file}")
     
     session.report(
@@ -116,7 +115,6 @@ def trainer(config, data_dir=tiles_dir):
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            
             checkpoint_dict = torch.load(
                 os.path.join(lib.find_latest_file(checkpoint_dir, '*.ckpt')),
                 )
@@ -130,15 +128,14 @@ def trainer(config, data_dir=tiles_dir):
 
     for epoch in range(start_epoch, config.get('max_epochs', 120)):
 
-        total_loss = 0
-        total_correct = 0
-        total = 0
+        train_loss = 0
+        train_total = 0
         all_labels = []
+        train_correct = 0
         all_predictions = []
+        train_batches_processed = 0
 
         for data in train_loader:
-            epoch_steps = 0
-
             images, labels_dict = data[0]['data'], data[0]['label']
             images = images.to(device).to(torch.float32)
             labels = labels_dict.squeeze(-1).long().to(device)
@@ -152,30 +149,30 @@ def trainer(config, data_dir=tiles_dir):
             loss.backward()
             optimizer.step()
 
-            epoch_steps += 1
-            total_loss += loss.item()
+            train_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            total_correct += (predicted == labels).sum().item()
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
             all_labels.extend(labels.cpu().numpy())
-            all_predictions.extend(predicted.cpu().numpy())     
+            all_predictions.extend(predicted.cpu().numpy())
+            train_batches_processed += 1
 
-        epoch_loss = total_loss / epoch_steps
-        epoch_acc = total_correct / total
+        train_loss = train_loss / train_batches_processed
+        train_acc = train_correct / train_total
         precision, recall, f1_score, _ = precision_recall_fscore_support(all_labels, all_predictions, labels=[0,1], average='weighted')
         if epoch > 1:
             curr_lr = lr_scheduler.get_last_lr()[0]
         else:
             curr_lr = config.get("lr")
         
-        val_batches_processed = 0
+        
         val_loss = 0
-        val_correct = 0
         val_total = 0
+        val_correct = 0
         val_all_labels = []
         val_all_predictions = []
+        val_batches_processed = 0
 
-        
         for data in val_loader:
             with torch.no_grad():
                 images, labels_dict = data[0]['data'], data[0]['label']
@@ -185,7 +182,7 @@ def trainer(config, data_dir=tiles_dir):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
 
-                val_loss += loss.cpu().numpy()
+                val_loss += loss.item()
                 _, predicted = torch.max(outputs.data, 1)
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
@@ -204,8 +201,8 @@ def trainer(config, data_dir=tiles_dir):
         print(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         metrics = {
-            "mean_accuracy": epoch_acc,
-            "loss": epoch_loss,
+            "mean_accuracy": train_acc,
+            "loss": train_loss,
             "precision": precision,
             "recall": recall,
             "f1_score": f1_score,
@@ -227,7 +224,6 @@ def trainer(config, data_dir=tiles_dir):
             session_dir, 
             metrics
         )
-
         # end of epoch run (identation!)
 
 
@@ -239,8 +235,8 @@ def main():
     ray_search_config = {
         "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
-        "momentum": tune.uniform(0.8, 0.95),
-        "lr": tune.loguniform(0.04, 0.05),
+        "momentum": tune.uniform(0.5, 0.95),
+        "lr": tune.loguniform(0.03, 0.06),
         "batch_size": 36
     }
 
@@ -274,7 +270,7 @@ def main():
 
 
     class CustomReporter(ProgressReporter):
-        # this only works with RAY_AIR_NEW_OUTPUT=0 (AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now.)
+        # this only works with no AIR_VERBOSITY
         def should_report(self, trials, done=False):
             return done
 
@@ -291,7 +287,6 @@ def main():
     # init ray-tune #
     #################
     init(
-        resources={"cpu": 16, "gpu": 1},
         logging_level='info',
         include_dashboard=False
     )
@@ -299,20 +294,21 @@ def main():
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
-            resources={"cpu": 16, "gpu": 1}),
-            param_space=ray_search_config,
-            run_config=train.RunConfig(
-                checkpoint_config=train.CheckpointConfig(num_to_keep=2),
-                storage_path=session_dir,
-                log_to_file=True,
-                stop=acc_plateau_stopper,
-                progress_reporter=CustomReporter(),
-                verbose=3,
-            ),
-            tune_config=tune.TuneConfig(
-                num_samples=100,
-                search_alg=search_alg,
-                scheduler=scheduler,
+            resources={"cpu": 16, "gpu": 1}
+        ),
+        param_space=ray_search_config,
+        run_config=train.RunConfig(
+            checkpoint_config=train.CheckpointConfig(num_to_keep=2),
+            storage_path=session_dir,
+            log_to_file=True,
+            stop=acc_plateau_stopper,
+            progress_reporter=CustomReporter(),
+            verbose=1,
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=100,
+            search_alg=search_alg,
+            scheduler=scheduler,
             max_concurrent_trials=1
         )
     )
@@ -334,8 +330,6 @@ def main():
         mode="min", 
         scope="all"
     )
-    pd.set_option('display.max_columns', None)
-    print(results.get_dataframe())
 
     print(f"Best trial selected by val_accuracy: ")
     print(f"config: {best_trial.config}")
