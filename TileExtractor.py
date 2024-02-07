@@ -1,7 +1,7 @@
 ##########################################################################################################
 # Author: Peter Karacsonyi                                                                               #
 # Last updated: 2024 jan 23                                                                              #
-# Input: Creates tiles from a wsi                                                                        #
+# Input: creates jpeg tiles from a tiff wsi                                                              #
 ##########################################################################################################
 
 ##############
@@ -77,7 +77,7 @@ def TissueDetectandSave(image_nparray, coverage, i):
                     tile_x_max = tile_x_start
                 if tile_y_max < tile_y_start:
                     tile_y_max = tile_y_start
-                    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg
+                    # for options see https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg
                 Image.fromarray(
                     im.image[tile_x_start:tile_x_end, tile_y_start:tile_y_end]
                 ).save(
@@ -124,7 +124,7 @@ def processWSI(wsi):
     ]
 
     for i in range(4):
-        print(f"processing quarter {i}")
+        print(f"processing quarter {i+1}")
         # print(f"\tDEBUG             [{i}]: bounding boxes (loc_x, loc_y, size_x, size_y): {qregions[i]}")
         st = time.time()
         image_pil = openslide_wsi.read_region(

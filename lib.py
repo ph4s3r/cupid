@@ -1,7 +1,9 @@
+import re
 import json
 import time
 import torch
 import pathml
+import signal
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -180,3 +182,47 @@ class EarlyStopping:
             return True
         else:
             return False
+        
+# Handler for signal timeout
+def signal_handler(signum, frame):
+    raise Exception("Timed out!")
+
+def timed_input(prompt, timeout=15):
+    # Set the signal handler for the alarm signal
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(timeout)  # Set an alarm
+
+    try:
+        user_input = input(prompt)
+        signal.alarm(0)  # Disable the alarm
+        return user_input
+    except Exception as e:
+        print("\nTimeout! Continuing without input.")
+        return ''
+
+def sanitize(name):
+    sanitized_name = re.sub(r'[^\w\s-]', '', name)
+    sanitized_name = sanitized_name.replace(' ', '')
+    return sanitized_name
+
+import os
+import glob
+
+def find_latest_file(folder_path: str, ext: str):
+    """
+    Finds and returns the filename of the latest (most recently modified) .ckpt file in a given folder.
+    
+    Parameters:
+    - folder_path: A string representing the path to the folder to search in.
+    - ext: A string representing extensions to search for e.g. '*.ckpt'
+    
+    Returns:
+    - The filename of the latest .ckpt file or None if no such file is found.
+    """
+    search_pattern = os.path.join(folder_path, ext)
+    ckpt_files = glob.glob(search_pattern)
+    if not ckpt_files:
+        print("No .ckpt files found in the folder.")
+        return None
+    latest_file = max(ckpt_files, key=os.path.getmtime)
+    return os.path.basename(latest_file)
