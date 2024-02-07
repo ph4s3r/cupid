@@ -77,6 +77,9 @@ static_config = {
 # definition of the trainable #
 ###############################
 def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
+    
+    assert torch.cuda.is_available(), "GPU is required because of Pytorch-AMP"; device = 'cuda'
+    
     ########################
     # read tiles with DALI #
     ########################
@@ -90,8 +93,6 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
         pretrained=True
     )
     model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using {device}")
     model = model.to(device)
 
     ######################
