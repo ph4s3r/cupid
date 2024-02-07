@@ -2,6 +2,7 @@
 # Author: Peter Karacsonyi                                                                               #
 # Last updated: 2024 feb 7                                                                               #
 # extracts useful jpeg tiles (using pathml TissueDetectionHE mask) from a wsi                            #
+# slicing the wsi to 4 parts to make sure it can fit into memory, warns when swap needs to be used       #
 ##########################################################################################################
 
 
@@ -31,8 +32,9 @@ config = {
 ###########
 import cv2
 import time
+import json
 import psutil
-import colorama
+from colorama import init, Fore # https://github.com/tartley/colorama/blob/master/colorama/ansi.py
 import openslide
 import numpy as np
 from PIL import Image
@@ -40,10 +42,7 @@ from pathlib import Path
 from pathml.core import Tile, types
 from pathml.preprocessing import TissueDetectionHE
 
-RED = '\033[91m'
-RESET = '\033[0m'
-colorama.init()
-
+init(autoreset=True)
 
 #####################################################################################
 # operations on a numpy.ndarray region: pathML TissueDetectionHE and PIL Image save #
@@ -113,8 +112,10 @@ def processWSI(wsi):
     tiles_total = 0
     openslide_wsi = openslide.OpenSlide(wsi)
 
+    q_pixels = ((openslide_wsi.level_dimensions[config.get('resolution')][1] * openslide_wsi.level_dimensions[config.get('resolution')][0]) / 4)
     w = openslide_wsi.level_dimensions[config.get('resolution')][1]
     h = openslide_wsi.level_dimensions[config.get('resolution')][0]
+    q_pixels = int((w * h) / 4)
 
     # first half of the pixels per dimension - better to be divisible by config.get('tile_size')
     x1 = ((w // config.get('tile_size')) // 2) * config.get('tile_size')
@@ -123,7 +124,7 @@ def processWSI(wsi):
     x2 = int(w - x1) + config.get('tile_size')
     y2 = int(h - y1) + config.get('tile_size')
 
-    print("shape and resolution details of the input file: ")
+    print("pyramid info: ")
     print("\tlevel_count: ", openslide_wsi.level_count)
     print("\tfirst 3 level_dimensions (h,w): ", openslide_wsi.level_dimensions[0:3])
     print("\tfirst 3 level_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples[0:3])
@@ -146,7 +147,7 @@ def processWSI(wsi):
                 qregions[i][2],
                 qregions[i][3],
             ),
-            level=config.get('resolution'),
+            level=config.get('resolution')
         )
         print(f"\tread_region()     [{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
@@ -154,6 +155,9 @@ def processWSI(wsi):
         image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
             np.uint8
         )
+        memory_usage_bytes = image_nparray.size * image_nparray.itemsize
+        if memory_usage_bytes > psutil.virtual_memory().available:
+            print(Fore.RED + f"WARNING: image slice (pixels: {q_pixels}) did not fit into the memory (size in MB: {memory_usage_bytes / (1024**2)}), swapped out..")
         del image_pil
         print(f"\tnp.asarray()      [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         
@@ -163,30 +167,34 @@ def processWSI(wsi):
     openslide_wsi.close()
     return tiles_total
 
-    
 
 
+print("")
 print(f"**************************************************")
 print(f"***************** TILE EXTRACTOR *****************")
 print(f"**************************************************")
 print("")
 
 if int(psutil.swap_memory().total) < int(psutil.virtual_memory().available):
-    print(f"{RED}WARNING: less swap is available than 2x of the physical memory, the OS will very likely kill the process when an image slice does not fit into the memory.{RESET}")
+    print(Fore.RED +"WARNING: less swap is available than 2x of the physical memory, the OS will very likely kill the process when an image slice does not fit into the memory.")
     print("")
+
+print(Fore.MAGENTA + "configuration values: ")
+print(Fore.MAGENTA + json.dumps(config, indent=4))
+print("")
 
 ####################################
 # run for all slides in the folder #
 ####################################
 wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 for wsi in wsi_paths:
-    print(
+    print(Fore.YELLOW + 
         f"************ Processing {wsi.name} on resolution level {config.get('resolution')} ************"
     )
     print("\r\n")
     start_time = time.time()
     wsi_tilecount = processWSI(wsi)
-    print(
+    print(Fore.GREEN + 
         f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.0f}s ************"
     )
     print("\r\n")
