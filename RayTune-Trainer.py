@@ -17,8 +17,8 @@ from nvidia_resnets.resnet import (
 import os
 import torch
 from pathlib import Path
-from ray import tune, init, train
 from ray.air import session
+from ray import tune, init, train
 from coolname import generate_slug
 from ray.tune import ProgressReporter
 from ray.tune.schedulers import ASHAScheduler
@@ -64,14 +64,23 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
     )
 
 
+########################
+# static configuration #
+########################
+static_config = {
+    "epochs": 120,
+    "batch_size": 36
+}
+
+
 ###############################
 # definition of the trainable #
 ###############################
-def trainer(config, data_dir=tiles_dir):
+def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, _ = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=config.get('batch_size'))
+    train_loader, val_loader, _ = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=static_config.get('batch_size'))
 
 
     ####################
@@ -91,9 +100,9 @@ def trainer(config, data_dir=tiles_dir):
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(
         model.parameters(), 
-        lr=config.get('lr'), 
-        nesterov=config.get('nesterov'), 
-        momentum=config.get('momentum')
+        lr=ray_config.get('lr'), 
+        nesterov=ray_config.get('nesterov'), 
+        momentum=ray_config.get('momentum')
     )
 
     #############################################
@@ -126,7 +135,7 @@ def trainer(config, data_dir=tiles_dir):
     else:
         start_epoch = 0
 
-    for epoch in range(start_epoch, config.get('max_epochs', 120)):
+    for epoch in range(start_epoch, static_config.get('epochs', 120)):
 
         train_loss = 0
         train_total = 0
@@ -163,7 +172,7 @@ def trainer(config, data_dir=tiles_dir):
         if epoch > 1:
             curr_lr = lr_scheduler.get_last_lr()[0]
         else:
-            curr_lr = config.get("lr")
+            curr_lr = ray_config.get("lr")
         
         
         val_loss = 0
@@ -198,7 +207,7 @@ def trainer(config, data_dir=tiles_dir):
         # schedule lr based on val loss
         lr_scheduler.step(val_epoch_loss)
 
-        print(f"Validation - Epoch {epoch+1}/{config.get('max_epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
+        print(f"Validation - Epoch {epoch+1}/{static_config.get('epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         metrics = {
             "mean_accuracy": train_acc,
@@ -232,26 +241,25 @@ def main():
     ########################
     # raytune search space #
     ########################
+
     ray_search_config = {
-        "max_epochs": 120,
         "nesterov": tune.choice([True, False]),
-        "momentum": tune.uniform(0.5, 0.95),
-        "lr": tune.loguniform(0.03, 0.06),
-        "batch_size": 36
+        "momentum": tune.uniform(0.5, 0.7),
+        "lr": tune.loguniform(0.02, 0.04),
     }
 
     scheduler = ASHAScheduler(
         metric="val_accuracy",
         mode="max",
-        max_t=ray_search_config.get("max_epochs"),
+        max_t=static_config.get("epochs"),
         grace_period=4,
         reduction_factor=2,
     )
 
     current_best_params = [{
-        "nesterov": False,
-        "momentum": 0.8,
-        "lr": 0.04,
+        "nesterov": True,
+        "momentum": 0.6,
+        "lr": 0.032,
     }]
 
     search_alg = HyperOptSearch(
