@@ -13,8 +13,7 @@ if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # local
 import lib
-import timedinput
-import dali_train as dali
+import dali.dali_train as dali
 import helpers.doublelogger as dl
 # pip
 import copy
@@ -53,8 +52,8 @@ tiles_dir = base_dir / Path("tiles-train-500")
 session_name = generate_slug(2)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 # user can customize the tensorboard folder
-user_input = timedinput.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
-user_input = timedinput.sanitize(user_input)
+user_input = lib.timedinput.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
+user_input = lib.timedinput.sanitize(user_input)
 print(f"Adding comment to tensorboard data: {user_input}")
 if user_input is not None:
     if user_input != '':

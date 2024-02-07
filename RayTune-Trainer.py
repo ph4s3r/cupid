@@ -9,7 +9,7 @@
 
 # local
 import lib
-import dali_raytune_train
+import dali.dali_raytune_train
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
 )
@@ -86,7 +86,7 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, _ = dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=static_config.get('batch_size'))
+    train_loader, val_loader, _ = dali.dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=static_config.get('batch_size'))
 
 
     ####################
