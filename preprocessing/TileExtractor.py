@@ -1,14 +1,14 @@
 ##########################################################################################################
 # Author: Peter Karacsonyi                                                                               #
 # Last updated: 2024 jan 23                                                                              #
-# Input: creates jpeg tiles from a tiff wsi                                                              #
+# Input: creates useful jpeg tiles (pathml mask) from a tiff wsi                                         #
 ##########################################################################################################
 
 ##############
 # IO folders #
 ##############
-wsi_folder = "/mnt/bigdata/placenta/wsitest"  # reads all wsi files in folder
-out_folder = "/mnt/bigdata/placenta/tilestest-418-keep"  # creates tiles in a directory with wsi name
+wsi_folder = "/mnt/bigdata/echino/newslides-test"  # reads all wsi files in folder
+out_folder = "/mnt/bigdata/echino/tiles"  # creates tiles in a directory with wsi name
 
 
 ##########
@@ -24,12 +24,18 @@ tile_size  = 500
 ###########
 import cv2
 import time
+import psutil
+import colorama
 import openslide
 import numpy as np
 from PIL import Image
 from pathlib import Path
 from pathml.core import Tile, types
 from pathml.preprocessing import TissueDetectionHE
+
+RED = '\033[91m'
+RESET = '\033[0m'
+colorama.init()
 
 
 #####################################################################################
@@ -156,7 +162,11 @@ def processWSI(wsi):
 print(f"**************************************************")
 print(f"***************** TILE EXTRACTOR *****************")
 print(f"**************************************************")
-print("\r\n")
+print("")
+
+if int(psutil.swap_memory().total) < int(psutil.virtual_memory().available):
+    print(f"{RED}WARNING: less swap is available than 2x of the physical memory, the OS will very likely kill the process when an image slice does not fit into the memory.{RESET}")
+    print("")
 
 ####################################
 # run for all slides in the folder #
