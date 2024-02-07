@@ -8,7 +8,7 @@
 
 
 # local
-import lib
+import util.utils as utils
 import dali.dali_raytune_train
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
@@ -129,7 +129,7 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             checkpoint_dict = torch.load(
-                os.path.join(lib.find_latest_file(checkpoint_dir, '*.ckpt')),
+                os.path.join(utils.find_latest_file(checkpoint_dir, '*.ckpt')),
                 )
             if checkpoint_dict.get('model_state', None) is not None:
                 start_epoch = checkpoint_dict['epoch'] + 1

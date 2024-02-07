@@ -10,7 +10,7 @@
 # imports
 import os
 # local files
-import lib
+import util.utils as utils
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # pip
@@ -86,7 +86,7 @@ datasets = []
 ds_fullsize = 0
 for h5file in h5files:
     print(f"creating dataset from {str(h5file)} with TransformedPathmlTileSet")
-    datasets.append(lib.TransformedPathmlTileSet(h5file))
+    datasets.append(utils.TransformedPathmlTileSet(h5file))
 
 for ds in datasets:
     ds_fullsize += ds.dataset_len

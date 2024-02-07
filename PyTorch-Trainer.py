@@ -12,9 +12,9 @@ import os
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
 # local
-import lib
+import util.utils as utils
 import dali.dali_train as dali
-import helpers.doublelogger as dl
+import util.doublelogger as dl
 # pip
 import copy
 import time
@@ -52,8 +52,8 @@ tiles_dir = base_dir / Path("tiles-train-500")
 session_name = generate_slug(2)
 tensorboard_log_dir = base_dir / "tensorboard_data" / session_name
 # user can customize the tensorboard folder
-user_input = lib.timedinput.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
-user_input = lib.timedinput.sanitize(user_input)
+user_input = utils.timedinput.timed_input("Any comment to add to the session (will be appended to the tensorboard folder)? : ")
+user_input = utils.timedinput.sanitize(user_input)
 print(f"Adding comment to tensorboard data: {user_input}")
 if user_input is not None:
     if user_input != '':
@@ -225,7 +225,7 @@ scheduler = StepLR(optimizer, step_size=7, gamma=0.1, verbose=True)
 total_step = dataset_size # full training dataset len
 
 # early stop on val loss not decreasing for <patience> epochs with more than <min_delta>
-early_stop_val_loss = lib.EarlyStopping(
+early_stop_val_loss = utils.EarlyStopping(
     min_delta=0.001,
     patience=15,
     verbose=True,
@@ -251,7 +251,7 @@ hyperparams_tensorboard = {
 }
 
 writer.add_hparams(hyperparams_tensorboard, {})
-writer.add_text("hyperparameters", lib.pretty_json(hyperparams_tensorboard))
+writer.add_text("hyperparameters", utils.pretty_json(hyperparams_tensorboard))
 writer.add_text("comment", user_input)
 
 for epoch in range(num_epochs):

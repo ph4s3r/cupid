@@ -11,7 +11,7 @@ import os
 # local files
 if os.name == "nt":
     import helpers.openslideimport  # on windows, openslide needs to be installed manually, check local openslideimport.py
-from lib import TransformedPathmlTileSet, timeit, print_file_sizes
+from util.utils import TransformedPathmlTileSet, timeit, print_file_sizes
 # pip
 import time
 import torch
