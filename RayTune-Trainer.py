@@ -31,15 +31,15 @@ from sklearn.metrics import precision_recall_fscore_support
 #####################
 # configure folders #
 #####################
-base_dir = Path("/mnt/bigdata/placenta")
-tiles_dir = base_dir / Path("tiles-train-500")
+base_dir = Path('/mnt/bigdata/placenta')
+tiles_dir = base_dir / Path('tiles-train-500')
 
 
 ##########################################
 # instantiate ray-tune experiment folder #
 ##########################################
 train_session_name = generate_slug(2)
-session_dir = base_dir / "ray_sessions" / train_session_name
+session_dir = base_dir / 'ray_sessions' / train_session_name
 session_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -49,15 +49,15 @@ session_dir.mkdir(parents=True, exist_ok=True)
 def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics):
     if train.get_context().get_world_rank() is None or train.get_context().get_world_rank() == 0: # only the no.1 worker manages checkpoints
         checkpoint_data = {
-            "epoch": epoch,
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": lr_scheduler.state_dict(),
+            'epoch': epoch,
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': lr_scheduler.state_dict(),
         }
         if epoch > 4:
-            checkpoint_data["model_state"] = model.state_dict()
+            checkpoint_data['model_state'] = model.state_dict()
             checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
             torch.save(checkpoint_data, checkpoint_file)
-            print(f"model checkpoint saved as {checkpoint_file}")
+            print(f'model checkpoint saved as {checkpoint_file}')
     
     session.report(
         metrics=metrics
@@ -68,8 +68,8 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 # static configuration #
 ########################
 static_config = {
-    "epochs": 120,
-    "batch_size": 128
+    'epochs': 120,
+    'batch_size': 128
 }
 
 
@@ -78,7 +78,7 @@ static_config = {
 ###############################
 def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     
-    assert torch.cuda.is_available(), "GPU is required because of Pytorch-AMP"; device = 'cuda'
+    assert torch.cuda.is_available(), 'GPU is required because of Pytorch-AMP'; device = 'cuda'
 
     # ⭐️⭐️ AMP GradScaler
     scaler = torch.cuda.amp.GradScaler()
@@ -131,11 +131,11 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
             checkpoint_dict = torch.load(
                 os.path.join(lib.find_latest_file(checkpoint_dir, '*.ckpt')),
                 )
-            if checkpoint_dict.get("model_state", None) is not None:
-                start_epoch = checkpoint_dict["epoch"] + 1
-                model.load_state_dict(checkpoint_dict.get("model_state", None))
-                optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
-                lr_scheduler.load_state_dict(checkpoint_dict["scheduler_state_dict"])
+            if checkpoint_dict.get('model_state', None) is not None:
+                start_epoch = checkpoint_dict['epoch'] + 1
+                model.load_state_dict(checkpoint_dict.get('model_state', None))
+                optimizer.load_state_dict(checkpoint_dict['optimizer_state_dict'])
+                lr_scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
     else:
         start_epoch = 0
 
@@ -156,7 +156,7 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
             optimizer.zero_grad()
 
             # ⭐️⭐️ forward pass with AMP autocast
-            with torch.autocast(device_type="cuda"):
+            with torch.autocast(device_type='cuda'):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
             
@@ -180,7 +180,7 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
         if epoch > 1:
             curr_lr = lr_scheduler.get_last_lr()[0]
         else:
-            curr_lr = ray_config.get("lr")
+            curr_lr = ray_config.get('lr')
         
         
         val_loss = 0
@@ -218,17 +218,17 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
         print(f"Validation - Epoch {epoch+1}/{static_config.get('epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
 
         metrics = {
-            "mean_accuracy": train_acc,
-            "loss": train_loss,
-            "precision": precision,
-            "recall": recall,
-            "f1_score": f1_score,
-            "val_accuracy": val_epoch_acc,
-            "val_loss": val_epoch_loss, 
-            "val_precision": val_precision,
-            "val_recall": val_recall,
-            "val_f1_score": val_f1_score,
-            "learning_rate": curr_lr
+            'mean_accuracy': train_acc,
+            'loss': train_loss,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1_score,
+            'val_accuracy': val_epoch_acc,
+            'val_loss': val_epoch_loss, 
+            'val_precision': val_precision,
+            'val_recall': val_recall,
+            'val_f1_score': val_f1_score,
+            'learning_rate': curr_lr
         }
 
         # TODO: for some reason it is logging into 2 directories...
@@ -251,34 +251,34 @@ def main():
     ########################
 
     ray_search_config = {
-        "nesterov": tune.choice([True, False]),
-        "momentum": tune.uniform(0.5, 0.7),
-        "lr": tune.loguniform(0.02, 0.04),
+        'nesterov': tune.choice([True, False]),
+        'momentum': tune.uniform(0.5, 0.7),
+        'lr': tune.loguniform(0.02, 0.04),
     }
 
     scheduler = ASHAScheduler(
-        metric="val_accuracy",
-        mode="max",
-        max_t=static_config.get("epochs"),
+        metric='val_accuracy',
+        mode='max',
+        max_t=static_config.get('epochs'),
         grace_period=4,
         reduction_factor=2,
     )
 
     current_best_params = [{
-        "nesterov": True,
-        "momentum": 0.6,
-        "lr": 0.032,
+        'nesterov': True,
+        'momentum': 0.6,
+        'lr': 0.032,
     }]
 
     search_alg = HyperOptSearch(
-        metric="val_accuracy", 
-        mode="max",
+        metric='val_accuracy', 
+        mode='max',
         points_to_evaluate=current_best_params
         )
     
     acc_plateau_stopper = TrialPlateauStopper(
-        metric="val_accuracy",
-        mode="max", # ?
+        metric='val_accuracy',
+        mode='max', # ?
         std=0.005,
         num_results=4,
         grace_period=4,
@@ -291,12 +291,12 @@ def main():
             return done
 
         def report(self, trials, *sys_info):
-            print("**********************************************")
-            print("***************ProgressReporter***************")
+            print('**********************************************')
+            print('***************ProgressReporter***************')
             print(*sys_info)
-            print("\\n".join([str(trial) for trial in trials]))
-            print("**********************************************")
-            print("**********************************************")
+            print('\\n'.join([str(trial) for trial in trials]))
+            print('**********************************************')
+            print('**********************************************')
 
 
     #################
@@ -310,7 +310,7 @@ def main():
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
-            resources={"cpu": 16, "gpu": 1}
+            resources={'cpu': 16, 'gpu': 1}
         ),
         param_space=ray_search_config,
         run_config=train.RunConfig(
@@ -332,9 +332,9 @@ def main():
     ###############################
     # can resume saved experiment #
     ###############################
-    experiment_path = None # "/mnt/bigdata/placenta/ray_sessions/uber-dolphin/trainer_2024-02-01_20-32-32" # path should be where the .pkl file is
+    experiment_path = None # '/mnt/bigdata/placenta/ray_sessions/uber-dolphin/trainer_2024-02-01_20-32-32' # path should be where the .pkl file is
     if experiment_path is not None:
-        print(f"resuming experiment from {experiment_path}")
+        print(f'resuming experiment from {experiment_path}')
         tuner = tune.Tuner.restore(path=experiment_path, trainable=trainer)
 
     ##################
@@ -342,18 +342,18 @@ def main():
     ##################
     results = tuner.fit()
     best_trial = results.get_best_result(
-        metric="val_accuracy", 
-        mode="min", 
-        scope="all"
+        metric='val_accuracy', 
+        mode='min', 
+        scope='all'
     )
 
-    print(f"Best trial selected by val_accuracy: ")
-    print(f"config: {best_trial.config}")
+    print(f'Best trial selected by val_accuracy: ')
+    print(f'config: {best_trial.config}')
     try:
-        print(f"path: {best_trial.path}")
-        print(f"Best checkpoints: {best_trial.best_checkpoints}") # can get it with get_best_checkpoint
+        print(f'path: {best_trial.path}')
+        print(f'Best checkpoints: {best_trial.best_checkpoints}') # can get it with get_best_checkpoint
     except:
         pass
     
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
