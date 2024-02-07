@@ -43,11 +43,11 @@ class TileInferIterator(object):
         self.batch_size = batch_size
 
         # read all images
-        self.files = [f for f in Path(images_dir).glob("*.png")]
+        self.files = [f for f in Path(images_dir).glob("*.jpg")]
         self.data_set_len = len(self.files)
 
         self.n = len(self.files)
-        assert self.n > 0, f"No png tiles found in dir {images_dir}"
+        assert self.n > 0, f"No jpg tiles found in dir {images_dir}"
 
     def __iter__(self):
         self.i = 0
