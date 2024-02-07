@@ -69,7 +69,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 ########################
 static_config = {
     "epochs": 120,
-    "batch_size": 36
+    "batch_size": 128
 }
 
 
@@ -79,6 +79,9 @@ static_config = {
 def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     
     assert torch.cuda.is_available(), "GPU is required because of Pytorch-AMP"; device = 'cuda'
+
+    # ⭐️⭐️ AMP GradScaler
+    scaler = torch.cuda.amp.GradScaler()
     
     ########################
     # read tiles with DALI #
@@ -150,14 +153,18 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
             images = images.to(device).to(torch.float32)
             labels = labels_dict.squeeze(-1).long().to(device)
 
-            # forward pass
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            
-            # backward and optimize
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+
+            # ⭐️⭐️ forward pass with AMP autocast
+            with torch.autocast(device_type="cuda"):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+            
+            # ⭐️⭐️ backward pass with gradient scaling
+            scaler.scale(loss).backward()
+            # ⭐️ ⭐️ opt update with scaler
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
