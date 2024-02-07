@@ -7,22 +7,24 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 ## main runners
 
 
-### preprocessing previews
+### preprocessing previews (mask fine-tuning)
 
 - **pathML-TissueDetection-Preview.py**:    check how a mask with pathml "TissueDetection" covers an image
 - **pathML-Transforms-Preview.py**:         check how a mask with pathml single transforms like binary threshold, morphopen, etc covers an image
 
-### preprocessing 
+### preprocessing & tile extraction (WSI to images or h5)
 
 - **TileExtractor.py**: reading tiff with openslide and saving usable tiles to jpeg (3+ times faster, no h5 created compared to pathml pipeline)
 - **pathML-placenta-TissueDetection.ipynb**: (legacy) reading wsi's and producing h5path files with pathml
-
-### saving tiles from h5 to png images
-
 - **pathML-TileSaver.py**: read h5s and writes usable tiles to jpeg
+
+### dataloaders
+
+- **dali/dali_...py**: data loading functions with Nvidia DALI, output is always a PyTorch type dataloader
 
 ### training
 
+- **RayTune-Trainer**: running ray-tune experiment to find hyperparams & train
 - **PyTorch-Trainer**: training!
 - NOTE: in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
 
@@ -32,7 +34,8 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 ### evaluation
 
-- **slide-infer.ipynb**: set model type, saved weights, session name and test data to get accuracy, roc/auc graph, top false negative images and write data to tensorboard
+- **Slide-Infer.ipynb**: set model type, saved weights, session name and test data to get accuracy, roc/auc graph, top false negative images and write data to tensorboard
+- **Infer.ipynb**: inference (outdated)
 
 ## auxilliary functions
 
@@ -50,14 +53,11 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 # TODOs
 
-- ray-tune
 - feature extraction
 - separate config from code: with e.g. Hydra or ConfigArgParse
-- switch to pytorch amp from APEX amp, because it is deprecated
 - study se_resnext101_32x4d more to fine-tune
 - think about segmentation -> https://github.com/ph4s3r/clinical/discussions/4
 - test in different env like Azure (just make sure the requirements.txt / conda env yaml is complete)
-- test out different image sizes / batch
 
 # notes
 
