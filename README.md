@@ -9,14 +9,14 @@ deep learning framework preprocessing wsis with pathml &amp; training pytorch mo
 
 ### preprocessing previews (mask fine-tuning)
 
-- **pathML-TissueDetection-Preview.py**:    check how a mask with pathml "TissueDetection" covers an image
-- **pathML-Transforms-Preview.py**:         check how a mask with pathml single transforms like binary threshold, morphopen, etc covers an image
+- **preprocessing/pathML-TissueDetection-Preview.py**:    check how a mask with pathml "TissueDetection" covers an image
+- **preprocessing/pathML-Transforms-Preview.py**:         check how a mask with pathml single transforms like binary threshold, morphopen, etc covers an image
 
 ### preprocessing & tile extraction (WSI to images or h5)
 
-- **TileExtractor.py**: reading tiff with openslide and saving usable tiles to jpeg (3+ times faster, no h5 created compared to pathml pipeline)
-- **pathML-placenta-TissueDetection.ipynb**: (legacy) reading wsi's and producing h5path files with pathml
-- **pathML-TileSaver.py**: read h5s and writes usable tiles to jpeg
+- **preprocessing/TileExtractor.py**: reading tiff with openslide and saving usable tiles to jpeg (3+ times faster, no h5 created compared to pathml pipeline)
+- **preprocessing/pathML-placenta-TissueDetection.ipynb**: (legacy) reading wsi's and producing h5path files with pathml
+- **preprocessing/pathML-TileSaver.py**: read h5s and writes usable tiles to jpeg
 
 ### dataloaders
 
