@@ -9,8 +9,9 @@
 ##############
 # IO folders #
 ##############
-wsi_folder = "/mnt/bigdata/echino/newslides-test"  # reads all wsi files in folder
-out_folder = "/mnt/bigdata/echino/tiles"  # creates tiles in a directory with wsi name
+wsi_folder      = "/mnt/bigdata/echino/newslides-test"  # reads all wsi files in folder
+wsi_done_folder = "/mnt/bigdata/echino/newslides-done"  # when finished processing, tiff file will be moved to another folder
+out_folder      = "/mnt/bigdata/echino/tiles"  # creates tiles in a directory with wsi name
 
 
 ##########
@@ -33,6 +34,7 @@ config = {
 import cv2
 import time
 import json
+import shutil
 import psutil
 from colorama import init, Fore # https://github.com/tartley/colorama/blob/master/colorama/ansi.py
 import openslide
@@ -128,6 +130,7 @@ def processWSI(wsi):
     print("\tlevel_count: ", openslide_wsi.level_count)
     print("\tfirst 3 level_dimensions (h,w): ", openslide_wsi.level_dimensions[0:3])
     print("\tfirst 3 level_downsamples (from 0 index to n): ", openslide_wsi.level_downsamples[0:3])
+    print(f"\trgb pixels to process on this resolution: {q_pixels:,}")
     print("\r\n")
 
     qregions = [
@@ -149,24 +152,24 @@ def processWSI(wsi):
             ),
             level=config.get('resolution')
         )
-        print(f"\tread_region()     [{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
 
+        print(f"\tread_region()     [{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         st = time.time()
+        mem_available_mb = int(psutil.virtual_memory().available / (1024**2))
         image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
             np.uint8
         )
-        memory_usage_bytes = image_nparray.size * image_nparray.itemsize
-        if memory_usage_bytes > psutil.virtual_memory().available:
-            print(Fore.RED + f"WARNING: image slice (pixels: {q_pixels}) did not fit into the memory (size in MB: {memory_usage_bytes / (1024**2)}), swapped out..")
-        del image_pil
+
+        nparray_memory_usage_mb = int((image_nparray.size * image_nparray.itemsize) / (1024**2))
+        if nparray_memory_usage_mb > mem_available_mb:
+            print(Fore.RED + f"\tWARNING: image (size: {nparray_memory_usage_mb }MB) did not fit in the memory ({mem_available_mb}MB was available), swapped out..")
         print(f"\tnp.asarray()      [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         
         tiles_total += TissueDetectandSave(image_nparray, config.get('coverage'), i)
         del image_nparray
-
+    
     openslide_wsi.close()
     return tiles_total
-
 
 
 print("")
@@ -189,7 +192,7 @@ print("")
 wsi_paths = list(Path(wsi_folder).glob("*.tif*"))
 for wsi in wsi_paths:
     print(Fore.YELLOW + 
-        f"************ Processing {wsi.name} on resolution level {config.get('resolution')} ************"
+        f"************ Processing {wsi.name} ************"
     )
     print("\r\n")
     start_time = time.time()
@@ -198,3 +201,4 @@ for wsi in wsi_paths:
         f"************ Extracted {wsi_tilecount} tiles from {wsi.name} in {(time.time() - start_time) // 60:.0f}m {(time.time() - start_time) % 60:.0f}s ************"
     )
     print("\r\n")
+    shutil.move(str(wsi), wsi_done_folder + "/" + str(wsi.name))
