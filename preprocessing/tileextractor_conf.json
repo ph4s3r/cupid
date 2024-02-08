@@ -1,0 +1,12 @@
+{
+	"wsi_folder"       						: "/mnt/bigdata/echino/newslides-test",
+	"wsi_done_folder"  						: "/mnt/bigdata/echino/newslides-done",
+	"out_folder"       						: "/mnt/bigdata/echino/tiles",
+    "resolution"	   						: 0,
+	"coverage"         						: 0.3,
+	"tile_size"                          	: 500,
+	"TissueDetectionHE_threshold"			: 19,
+	"TissueDetectionHE_min_region_size"		: 1000,
+	"TissueDetectionHE_max_hole_size"		: 10000,
+	"TissueDetectionHE_use_saturation"		: true
+}
