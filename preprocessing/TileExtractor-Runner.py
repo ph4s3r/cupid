@@ -41,6 +41,10 @@ print(f"***************** TILE EXTRACTOR *****************")
 print(f"**************************************************")
 print("")
 
+print("CONFIG:")
+print(json.dumps(config, indent=4))
+Path(config.get('wsi_done_folder')).mkdir(parents=True, exist_ok=True)
+
 swap_avail = int(psutil.swap_memory().total)
 if swap_avail < int(psutil.virtual_memory().available):
     print(Fore.RED + f"WARNING: only ({swap_avail} MB) swap is available which is less than 2x of the physical memory. The OS will terminate the process when an image does not fit into the memory.")
@@ -49,9 +53,10 @@ if swap_avail < int(psutil.virtual_memory().available):
 ####################################
 # run for all slides in the folder #
 ####################################
+
 wsi_paths = list(Path(config.get('wsi_folder')).glob("*.tif*"))
 for wsi_path in wsi_paths:
-
+    
     command = ['python', 'preprocessing/TileExtractor-Process-WSI.py', wsi_path, config_json_path, config.get('out_folder')]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
