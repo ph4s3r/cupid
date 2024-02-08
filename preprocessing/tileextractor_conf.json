@@ -1,7 +1,7 @@
 {
-	"wsi_folder"       						: "/mnt/bigdata/echino/newslides-test",
-	"wsi_done_folder"  						: "/mnt/bigdata/echino/newslides-done",
-	"out_folder"       						: "/mnt/bigdata/echino/tiles",
+	"wsi_folder"       						: "/mnt/bigdata//newslides-test",
+	"wsi_done_folder"  						: "/mnt/bigdata//newslides-done",
+	"out_folder"       						: "/mnt/bigdata//tiles",
     "resolution"	   						: 0,
 	"coverage"         						: 0.3,
 	"tile_size"                          	: 500,

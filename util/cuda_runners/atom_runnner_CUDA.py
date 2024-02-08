@@ -11,10 +11,10 @@ import numpy as np
 import time
 
 # set working directory
-base_dir = Path("G:\echinov3")
+base_dir = Path("G:\v3")
 # wsi folder
 wsi_subfolder = "wsi"
-# place geojsons into this folder inside base with same name as the image (echino23.tiff / echino38.gejson)
+# place geojsons into this folder inside base with same name as the image (23.tiff / 38.gejson)
 geojson_subfolder = "geojson"
 # writing the masks as numpy arrays here
 numpy_mask_subfolder = "wsiannotation-dumps"
@@ -37,4 +37,4 @@ for wsi in wsi_paths:
     print(f"Creating mask_array for {geojson_file} took {time_elapsed} s")
 
     np.save(f"{str(numpy_mask_dir)}\{filename}", mask_array, allow_pickle=True)
-    print(f"wrote annotation mask to disk G:\echinov3\wsiannotation-dumps\{filename}")
+    print(f"wrote annotation mask to disk G:\v3\wsiannotation-dumps\{filename}")

@@ -48,7 +48,7 @@ pip install "ray[tune]"
 pip install "ray[default]"
 pip install hyperopt
 # pathml had a GLIBC error where it does not found a library, so need to link the 
-# ln -sf /home/peet/.conda/envs/pathml/lib/libstdc++.so.6 /home/peet/.conda/envs/pathml/lib/libstdc++.so.6
+# ln -sf /home/xzy/.conda/envs/pathml/lib/libstdc++.so.6 /home/xzy/.conda/envs/pathml/lib/libstdc++.so.6
 
 pip install absl-py
 pip install sphinx-glpi-theme

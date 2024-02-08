@@ -8,10 +8,10 @@ import numpy as np
 import time
 
 # set working directory
-base_dir = Path("G:\echinov2")
+base_dir = Path("G:\v2")
 # wsi folder
 wsi_subfolder = "wsi"
-# place geojsons into this folder inside base with same name as the image (echino23.tiff / echino38.gejson)
+# place geojsons into this folder inside base with same name as the image (23.tiff / 38.gejson)
 geojson_subfolder = "geojson"
 # writing the masks as numpy arrays here
 numpy_mask_subfolder = "wsiannotation-dumps"

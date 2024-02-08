@@ -1,9 +1,9 @@
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-folder = 'G:\\echinov3\\h5-bad-annotation\\'
+folder = 'G:\\v3\\h5-bad-annotation\\'
 
-file = "echino41.tif.h5path"
+file = "41.tif.h5path"
 
 h5file = h5py.File(folder+file, 'r')
 

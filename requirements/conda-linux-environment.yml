@@ -300,4 +300,4 @@ dependencies:
       - zope-deprecation==5.0
       - zope-interface==6.1
       - zope-sqlalchemy==3.1
-prefix: /home/peet/.conda/envs/pathml
+prefix: /home/xzy/.conda/envs/pathml

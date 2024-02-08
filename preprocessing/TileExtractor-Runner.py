@@ -8,7 +8,7 @@
 ##########
 # CONFIG #
 ##########
-config_json_path = "/mnt/bigdata/clinical/preprocessing/tileextractor_conf.json"
+config_json_path = "/mnt/bigdata/cupid/preprocessing/tileextractor_conf.json"
 
 ###########
 # imports #

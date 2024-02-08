@@ -106,7 +106,7 @@ def transform_and_plot(wsi):
             size=(pml_wsi.slide.slide.level_dimensions[0][1], pml_wsi.slide.slide.level_dimensions[0][0])
             )
 
-    # some tiff images (echino) had half of the image array blank so removing improves plotting 
+    # some tiff images () had half of the image array blank so removing improves plotting 
     # smaller_dim = min(region.shape[0:2])
     # smallregion = region[0:smaller_dim, 0:smaller_dim]
     # print("removed unnecessary part (right half of img is displayed blank.. not sure why), new region shape:", region.shape)
