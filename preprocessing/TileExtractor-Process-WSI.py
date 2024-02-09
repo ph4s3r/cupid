@@ -14,7 +14,7 @@ import os
 import cv2
 import time
 import json
-import psutil
+# import psutil
 import argparse
 import openslide
 import numpy as np
@@ -133,14 +133,14 @@ def processWSI(wsi, config: dict, out_folder):
 
         print(f"\tread_region()     [{i}] {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         st = time.time()
-        mem_available_mb = int(psutil.virtual_memory().available / (1024**2))
+        # mem_available_mb = int(psutil.virtual_memory().available / (1024**2))
         image_nparray = cv2.cvtColor(np.asarray(image_pil), cv2.COLOR_RGBA2RGB).astype(
             np.uint8
         )
 
-        nparray_memory_usage_mb = int((image_nparray.size * image_nparray.itemsize) / (1024**2))
-        if nparray_memory_usage_mb > mem_available_mb:
-            print(f"\tWARNING: image (size: {nparray_memory_usage_mb }MB) did not fit in the memory ({mem_available_mb}MB was available), swapped out..")
+        # nparray_memory_usage_mb = int((image_nparray.size * image_nparray.itemsize) / (1024**2))
+        # if nparray_memory_usage_mb > mem_available_mb:
+        #     print(f"\tWARNING: image (size: {nparray_memory_usage_mb }MB) did not fit in the memory ({mem_available_mb}MB was available), swapped out..")
         print(f"\tnp.asarray()      [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
         
         tiles_total += TissueDetectandSave(image_nparray, config.get('coverage'), i, config, wsi.split("/")[-1], out_folder)
