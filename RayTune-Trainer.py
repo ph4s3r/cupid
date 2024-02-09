@@ -31,8 +31,8 @@ from sklearn.metrics import precision_recall_fscore_support
 #####################
 # configure folders #
 #####################
-base_dir = Path('/mnt/bigdata/placenta')
-tiles_dir = base_dir / Path('tiles-train-500')
+base_dir = Path('/mnt/bigdata/echino')
+tiles_dir = base_dir / Path('tiles')
 
 
 ##########################################
@@ -86,7 +86,11 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     ########################
     # read tiles with DALI #
     ########################
-    train_loader, val_loader, _ = dali.dali_raytune_train.dataloaders(tiles_dir=data_dir, batch_size=static_config.get('batch_size'))
+    train_loader, val_loader, _ = dali.dali_raytune_train.dataloaders(
+        tiles_dir=data_dir, 
+        batch_size=static_config.get('batch_size'),
+        classlabels=['tumor', 'normal']
+    )
 
 
     ####################

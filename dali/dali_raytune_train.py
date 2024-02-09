@@ -118,8 +118,20 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
 #     next = __next__
 
 
-def dataloaders(tiles_dir, batch_size):
+def dataloaders(tiles_dir, batch_size, classlabels: list[str]):
+    """_summary_
 
+    Args:
+        tiles_dir (_type_): _description_
+        batch_size (_type_): _description_
+        classlabels (list[str]): if str is found in the filename, it gets a numeric label = the index of str in the list
+
+    Raises:
+        Exception: _description_
+
+    Returns:
+        _type_: _description_
+    """
     ########################
     # read tiles with DALI #
     ########################
@@ -140,14 +152,21 @@ def dataloaders(tiles_dir, batch_size):
 
     labels = copy.deepcopy(files)
 
-    for i, label in enumerate(labels):
-        l = label.split("/")[-1]
-        if 'a' in l:
-            labels[i] = 0
-        elif 'b' in l:
-            labels[i] = 1
-        else:
-            raise Exception(f"Error: cannot create classlabel from {label}. tile jpg does not have an 'a' or 'b' in filename.")
+    # convert all classlabels to lowercase -jic
+    for i, c in enumerate(classlabels):
+        classlabels[i] = c.lower()
+
+    # gather info on class-label balance
+    classlabel_counts = [0] * len(classlabels)
+
+    for i, filename in enumerate(labels):
+        filename = filename.split("/")[-1].lower()
+        for label_index, label_substr in enumerate(classlabels):
+            if label_substr in filename:     # if filename contains the label substr
+                labels[i] = label_index # tile will be labeled with the index of string found in the array
+                classlabel_counts[label_index] += 1
+        if type(labels[i]) != int:
+            raise Exception(f"Error: cannot create classlabel from {filename}. tile jpg does not have any of {classlabels} in filename.")            
 
 
     train_pipelines = [train_pipeline(
@@ -176,6 +195,7 @@ def dataloaders(tiles_dir, batch_size):
     val_loader   = DALIClassificationIterator(val_pipeline, reader_name="Reader", last_batch_policy=LastBatchPolicy.PARTIAL)
 
     dataset_size = len(labels)
-    print(f"DALI loaded a dataset of size {dataset_size} successfully")
+    print(f"DALI loaded a dataset of size {dataset_size} successfully. ")
+    print(f"classlabels: {classlabels} and tile counts respectively: {classlabel_counts} (in percentages: {[round(100 * c / dataset_size, 2) for c in classlabel_counts]})")
 
     return train_loader, val_loader, dataset_size
