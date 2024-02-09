@@ -31,7 +31,7 @@ from sklearn.metrics import precision_recall_fscore_support
 #####################
 # configure folders #
 #####################
-base_dir = Path('/mnt/bigdata/echino')
+base_dir = Path('/mnt/bigdata/datasets/breastcancersamples')
 tiles_dir = base_dir / Path('tiles')
 
 
@@ -69,7 +69,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 ########################
 static_config = {
     'epochs': 120,
-    'batch_size': 128
+    'batch_size': 102
 }
 
 
@@ -89,7 +89,8 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
     train_loader, val_loader, _ = dali.dali_raytune_train.dataloaders(
         tiles_dir=data_dir, 
         batch_size=static_config.get('batch_size'),
-        classlabels=['tumor', 'normal']
+        classlabels=['tumor', 'normal'],
+        image_size = 256
     )
 
 

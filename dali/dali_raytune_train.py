@@ -13,7 +13,7 @@ from nvidia.dali.plugin.base_iterator import LastBatchPolicy
 from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 
 @pipeline_def
-def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pad_last_batch=False):
+def train_pipeline(files, labels, shard_id, num_shards, image_size = 256, stick_to_shard=False, pad_last_batch=False):
     """
     training pipeline: creates class based on the folder name (dir named '0' will assign '0' class etc..)
 
@@ -39,7 +39,7 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
     )
     images = fn.decoders.image(ims, device='cpu')
     images = fn.transpose(images, perm=[2, 0, 1])
-    images = fn.resize(images, size=[224, 224])
+    images = fn.resize(images, size=[image_size, image_size])
     return images, labels
 
 
@@ -118,7 +118,7 @@ def train_pipeline(files, labels, shard_id, num_shards, stick_to_shard=False, pa
 #     next = __next__
 
 
-def dataloaders(tiles_dir, batch_size, classlabels: list[str]):
+def dataloaders(tiles_dir, batch_size, classlabels: list[str], image_size = 256):
     """_summary_
 
     Args:
@@ -174,6 +174,7 @@ def dataloaders(tiles_dir, batch_size, classlabels: list[str]):
         labels=labels,
         shard_id=shard_seq, 
         num_shards=num_shards,
+        image_size=image_size,
         batch_size=batch_size,
         stick_to_shard=False,   # if True, loads only one shard per epoch, otherwise the entire dataset
         num_threads=16,
@@ -185,6 +186,7 @@ def dataloaders(tiles_dir, batch_size, classlabels: list[str]):
         labels=labels,
         shard_id=val_shard_id, 
         num_shards=num_shards,
+        image_size=image_size,
         batch_size=batch_size,
         stick_to_shard=False,   # if True, loads only one shard per epoch, otherwise the entire dataset
         num_threads=16,
