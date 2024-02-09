@@ -142,8 +142,7 @@ def processWSI(wsi, config: dict, out_folder):
         # if nparray_memory_usage_mb > mem_available_mb:
         #     print(f"\tWARNING: image (size: {nparray_memory_usage_mb }MB) did not fit in the memory ({mem_available_mb}MB was available), swapped out..")
         print(f"\tnp.asarray()      [{i}] took {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s")
-        
-        tiles_total += TissueDetectandSave(image_nparray, config.get('coverage'), i, config, wsi.split("/")[-1], out_folder)
+        tiles_total += TissueDetectandSave(image_nparray, config.get('coverage'), i, config, Path(wsi).stem, out_folder)
         del image_nparray
     
     openslide_wsi.close()
@@ -158,6 +157,8 @@ if __name__ == "__main__":
     parser.add_argument("out_folder", type=str, help="Output folder path")
     args = parser.parse_args()
     
+    st = time.time()
+
     print(f"************ Processing {args.wsi} ************")
     print("")
 
@@ -171,4 +172,4 @@ if __name__ == "__main__":
         os._exit(78)
 
     tiles_extracted = processWSI(args.wsi, config, args.out_folder)
-    print(f"************ Processed {args.wsi} extracting {tiles_extracted} tiles ************\r\n")
+    print(f"************ Processed {Path(args.wsi).stem} extracting {tiles_extracted} tiles in {(time.time() - st) // 60:.0f}m {(time.time() - st) % 60:.0f}s ************\r\n")
