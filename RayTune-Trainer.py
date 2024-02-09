@@ -9,7 +9,6 @@
 
 # local
 import util.utils as utils
-import dali.dali_raytune_train
 from nvidia_resnets.resnet import (
     se_resnext101_32x4d,
 )
@@ -31,8 +30,18 @@ from sklearn.metrics import precision_recall_fscore_support
 #####################
 # configure folders #
 #####################
-base_dir = Path('/mnt/bigdata/datasets/breastcancersamples')
-tiles_dir = base_dir / Path('tiles')
+base_dir = Path('/mnt/bigdata/datasets/camelyon-pcam')
+# tiles_dir = base_dir / Path('tiles')
+h5_dir = base_dir / Path('h5')
+
+
+########################
+# static configuration #
+########################
+static_config = {
+    'epochs': 120,
+    'batch_size': 128
+}
 
 
 ##########################################
@@ -64,36 +73,40 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
     )
 
 
-########################
-# static configuration #
-########################
-static_config = {
-    'epochs': 120,
-    'batch_size': 102
-}
 
 
 ###############################
 # definition of the trainable #
 ###############################
-def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
+def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     
     assert torch.cuda.is_available(), 'GPU is required because of Pytorch-AMP'; device = 'cuda'
+
+    # ########################
+    # # read tiles with DALI #
+    # ########################
+    # import dataloaders.dali_raytune_train
+    # train_loader, val_loader, _ = dataloaders.dali_raytune_train.dataloaders(
+    #     tiles_dir=data_dir, 
+    #     batch_size=static_config.get('batch_size'),
+    #     classlabels=['tumor', 'normal'],
+    #     image_size = 256
+    # )
+
+    ###########
+    # read h5 #
+    ###########
+    from dataloaders.pcam_h5_dataloader import load_pcam
+    train_loader, val_loader, _ = load_pcam(
+        dataset_root=data_dir, 
+        batch_size=static_config.get('batch_size'), 
+        shuffle=True,
+        download=False
+    )
 
     # ⭐️⭐️ AMP GradScaler
     scaler = torch.cuda.amp.GradScaler()
     
-    ########################
-    # read tiles with DALI #
-    ########################
-    train_loader, val_loader, _ = dali.dali_raytune_train.dataloaders(
-        tiles_dir=data_dir, 
-        batch_size=static_config.get('batch_size'),
-        classlabels=['tumor', 'normal'],
-        image_size = 256
-    )
-
-
     ####################
     # model definition #
     ####################
@@ -154,7 +167,8 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
         train_batches_processed = 0
 
         for data in train_loader:
-            images, labels_dict = data[0]['data'], data[0]['label']
+            # images, labels_dict = data[0]['data'], data[0]['label'] # dali-type data
+            images, labels_dict = data[0], data[1]          # h5-type data
             images = images.to(device).to(torch.float32)
             labels = labels_dict.squeeze(-1).long().to(device)
 
@@ -197,7 +211,8 @@ def trainer(ray_config, static_config=static_config, data_dir=tiles_dir):
 
         for data in val_loader:
             with torch.no_grad():
-                images, labels_dict = data[0]['data'], data[0]['label']
+                # images, labels_dict = data[0]['data'], data[0]['label'] # dali-type data
+                images, labels_dict = data[0], data[1]          # h5-type data
                 images = images.to(device).to(torch.float32)
                 labels = labels_dict.squeeze(-1).long().to(device)
 
@@ -330,7 +345,7 @@ def main():
             num_samples=100,
             search_alg=search_alg,
             scheduler=scheduler,
-            max_concurrent_trials=1
+            max_concurrent_trials=4
         )
     )
 
