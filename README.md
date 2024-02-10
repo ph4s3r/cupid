@@ -21,33 +21,30 @@ There are no plans to share the data with third parties outside of the physician
 
 # Project Structure
 
-preprocessing: various functions to create tiles from whole slide images to prepare a PyTorch dataloder for training
-
-## Preprocessing
-
-### Tissue Detection Previews
-
-- **preprocessing/pathML-TissueDetection-Preview.py**:      check how a mask with pathml "TissueDetection" covers an image
-- **preprocessing/pathML-Transforms-Preview.py**:           check how a mask with pathml single transforms like binary threshold, morphopen, etc covers an image
+Various solutions exist for dataloading and tile-extraction depending on dataset we intend to work on
 
 ### Tile Extraction
 
-- **preprocessing/TileExtractor-Runner.py**:                reading tiff wsi files in a folder and extract jpeg tiles
-- **preprocessing/pathML-placenta-TissueDetection.ipynb**:  (legacy) reading tiff wsi files in a folder and produce h5path files with pathml
-- **preprocessing/pathML-TileSaver.py**:                    read h5s files and extract jpeg tiles
+- **tileextraction/pathml-tissueDetectionpreview.py**:      check how a mask with pathML "TissueDetection" covers an image
+- **tileextraction/pathml-transformspreview.py**:           check how a mask with pathML single transforms like binary threshold, morphopen, etc covers an image
+- **tileextraction/wsi-tileextractor.py**:                  reading tiff wsi files in a folder and extract jpeg tiles
+- **tileextraction/wsiprocessor.py**:                       wsi processing functionality of wsi-tileextractor.py (it runs as subprocess) 
+- **tileextraction/wsi-to-h5.ipynb**:                       (legacy) reading tiff wsi files with pathML in a folder and produce h5path files
+- **tileextraction/h5-to-tiles.py**:                        read h5s files and extract jpeg tiles
 
 ### Dataloading
 
-- **dali/dali_...py**:                                      data loading functions with Nvidia DALI, output is always a PyTorch type dataloader
+- **dataloaders/dali_...py**:                               data loading functions with Nvidia DALI, output is always a PyTorch type dataloader
+- **dataloaders/pcam_h5_dataloader.py**:                    can load a PyTorch h5 dataset (from torchvision.datasets)
 
 ## Training
 
-- **RayTune-Trainer**:                                      running ray-tune experiment to find hyperparams & train
+- **raytune-train**:                                      running ray-tune experiment to find hyperparams & train
 - NOTE: in the trainer: global means and stds can be computed with (mean, std = helpers.ds_means_stds.mean_stds(full_ds)), need to re-run the trainer with manually entering the results into v2.compose.Normalize
 
 ### Inference
 
-- **Slide-Infer.ipynb**:                                    infer a whole slide image to see tile heatmap, roc/auc graph and other prediction based data
+- **infer.ipynb**:                                    infer a whole slide image to see tile heatmap, roc/auc graph and other prediction based data
 
 # Versions
 
