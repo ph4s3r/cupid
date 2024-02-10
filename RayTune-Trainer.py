@@ -305,20 +305,6 @@ def main():
     )
 
 
-    class CustomReporter(ProgressReporter):
-        # this only works with no AIR_VERBOSITY
-        def should_report(self, trials, done=False):
-            return done
-
-        def report(self, trials, *sys_info):
-            print('**********************************************')
-            print('***************ProgressReporter***************')
-            print(*sys_info)
-            print('\\n'.join([str(trial) for trial in trials]))
-            print('**********************************************')
-            print('**********************************************')
-
-
     #################
     # init ray-tune #
     #################
@@ -338,7 +324,6 @@ def main():
             storage_path=session_dir,
             log_to_file=True,
             stop=acc_plateau_stopper,
-            progress_reporter=CustomReporter(),
             verbose=1,
         ),
         tune_config=tune.TuneConfig(
