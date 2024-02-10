@@ -249,8 +249,6 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
         # schedule lr based on val loss
         lr_scheduler.step(val_epoch_loss)
 
-        print(f"Validation - Epoch {epoch+1}/{static_config.get('epochs')} - Loss: {val_epoch_loss:.6f}, Acc: {val_epoch_acc:.6f}, Precision: {val_precision:.6f}, Recall: {val_recall:.6f}, F1: {val_f1_score:.6f}")
-
         metrics = {
             'mean_accuracy': train_acc,
             'loss': train_loss,
