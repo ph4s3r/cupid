@@ -2,15 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
-            "type": "python",
+            "name": "py debug",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: Current File with profiler",
-            "type": "python",
+            "name": "SNAKEVIZ PROFILER",
+            "type": "debugpy",
             "request": "launch",
             "module": "cProfile",
             "args": [
