@@ -88,7 +88,7 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     # import dataloaders.dali_raytune_train
     # train_loader, val_loader, _ = dataloaders.dali_raytune_train.dataloaders(
     #     tiles_dir=data_dir, 
-    #     batch_size=static_config.get('batch_size'),
+    #     batch_size=ray_config.get('batch_size', static_config.get('batch_size')), 
     #     classlabels=['tumor', 'normal'],
     #     image_size = 256
     # )
@@ -99,8 +99,8 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     from dataloaders.pcam_h5_dataloader import load_pcam
     train_loader, val_loader, _ = load_pcam(
         dataset_root=data_dir, 
-        batch_size=static_config.get('batch_size'), 
-        shuffle=True,
+        batch_size=ray_config.get('batch_size', static_config.get('batch_size')), 
+        shuffle=False,
         download=False
     )
 
@@ -157,6 +157,10 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     else:
         start_epoch = 0
 
+    ############
+    # training #
+    ############
+
     for epoch in range(start_epoch, static_config.get('epochs', 120)):
 
         train_loss = 0
@@ -201,7 +205,10 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
         else:
             curr_lr = ray_config.get('lr')
         
-        
+        ##############
+        # validation #
+        ##############
+            
         val_loss = 0
         val_total = 0
         val_correct = 0
@@ -271,23 +278,25 @@ def main():
     ########################
 
     ray_search_config = {
-        'nesterov': tune.choice([True, False]),
-        'momentum': tune.uniform(0.5, 0.7),
-        'lr': tune.loguniform(0.02, 0.04),
+        'nesterov': False,
+        'momentum': tune.uniform(0.05, 0.6),
+        'lr': tune.loguniform(0.005, 0.04),
+        'batch_size': tune.qrandint(16, 128, 16),
     }
 
     scheduler = ASHAScheduler(
         metric='val_accuracy',
         mode='max',
         max_t=static_config.get('epochs'),
-        grace_period=4,
+        grace_period=1,
         reduction_factor=2,
     )
 
     current_best_params = [{
-        'nesterov': True,
-        'momentum': 0.6,
-        'lr': 0.032,
+        'nesterov': False,
+        'momentum': 0.5,
+        'lr': 0.02,
+        'batch_size': 128,
     }]
 
     search_alg = HyperOptSearch(
@@ -316,7 +325,7 @@ def main():
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
-            resources={'cpu': 16, 'gpu': 1}
+            resources={'cpu': 4, 'gpu': 0.25}
         ),
         param_space=ray_search_config,
         run_config=train.RunConfig(
@@ -337,7 +346,7 @@ def main():
     ###############################
     # can resume saved experiment #
     ###############################
-    experiment_path = None # '/mnt/bigdata/placenta/ray_sessions/uber-dolphin/trainer_2024-02-01_20-32-32' # path should be where the .pkl file is
+    experiment_path = None # '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/blue-malkoha/trainer_2024-02-09_17-41-08' # path should be where the .pkl file is
     if experiment_path is not None:
         print(f'resuming experiment from {experiment_path}')
         tuner = tune.Tuner.restore(path=experiment_path, trainable=trainer)
