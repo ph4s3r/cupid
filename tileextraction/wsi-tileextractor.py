@@ -61,7 +61,7 @@ if len(wsi_paths) == 0:
 
 for wsi_path in wsi_paths:
     
-    command = ['python', 'preprocessing/TileExtractor-Process-WSI.py', wsi_path, config_json_path, config.get('out_folder')]
+    command = ['python', 'tileextraction/wsiprocessor.py', wsi_path, config_json_path, config.get('out_folder')]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     # streaming subprocess stdout
