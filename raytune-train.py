@@ -351,7 +351,7 @@ def main():
     ###############################
     # can resume saved experiment #
     ###############################
-    experiment_path = None # '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/blue-malkoha/trainer_2024-02-09_17-41-08' # path should be where the .pkl file is
+    experiment_path = '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/ludicrous-mosquito/trainer_2024-02-10_11-26-12/' # path should be where the .pkl file is
     if experiment_path is not None:
         print(f'resuming experiment from {experiment_path}')
         tuner = tune.Tuner.restore(path=experiment_path, trainable=trainer)
@@ -362,7 +362,7 @@ def main():
     results = tuner.fit()
     best_trial = results.get_best_result(
         metric='val_accuracy', 
-        mode='min', 
+        mode='max', 
         scope='all'
     )
 
