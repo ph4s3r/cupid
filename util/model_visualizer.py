@@ -1,8 +1,6 @@
 from torch import randn
 from pathlib import Path
-from nvidia_resnets.resnet import (
-    se_resnext101_32x4d,
-)
+from models.nvidia_resnets.resnet import se_resnext101_32x4d
 from tensorboardX import SummaryWriter
 
 base_dir = Path("/mnt/bigdata/placenta")

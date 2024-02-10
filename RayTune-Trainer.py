@@ -17,7 +17,6 @@ from pathlib import Path
 from ray.air import session
 from ray import tune, init, train
 from coolname import generate_slug
-from ray.tune import ProgressReporter
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.stopper import TrialPlateauStopper
