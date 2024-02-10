@@ -9,7 +9,6 @@
 
 # local
 import util.utils as utils
-from models.nvidia_resnets.resnet import se_resnext101_32x4d
 # pip & std
 import os
 import torch
@@ -107,11 +106,22 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     ####################
     # model definition #
     ####################
-    model = se_resnext101_32x4d(
-        pretrained=True
+    # from models.nvidia_resnets.resnet import se_resnext101_32x4d
+    # model = se_resnext101_32x4d(
+    #     pretrained=True
+    # )
+    # model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
+    # model = model.to(device)
+
+    from torchvision.models import densenet161, DenseNet161_Weights
+
+    model = densenet161(
+        weights=DenseNet161_Weights.IMAGENET1K_V1
     )
-    model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
+
+    model.fc = torch.nn.Linear(in_features=2208, out_features=2, bias=True)
     model = model.to(device)
+ 
 
     ######################
     # loss and optimizer #
@@ -322,7 +332,7 @@ def main():
     tuner = tune.Tuner(
         tune.with_resources(
             trainable=trainer, 
-            resources={'cpu': 4, 'gpu': 0.25}
+            resources={'cpu': 3, 'gpu': 0.20}
         ),
         param_space=ray_search_config,
         run_config=train.RunConfig(
