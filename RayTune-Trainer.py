@@ -9,9 +9,7 @@
 
 # local
 import util.utils as utils
-from nvidia_resnets.resnet import (
-    se_resnext101_32x4d,
-)
+from models.nvidia_resnets.resnet import se_resnext101_32x4d
 # pip & std
 import os
 import torch
