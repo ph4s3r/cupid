@@ -12,13 +12,14 @@ import util.utils as utils
 # pip & std
 import os
 import torch
+import tempfile
 from pathlib import Path
-from ray.air import session
+from ray.train import Checkpoint
 from ray import tune, init, train
 from coolname import generate_slug
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.stopper import TrialPlateauStopper
+from ray.tune.search.hyperopt import HyperOptSearch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -29,6 +30,7 @@ from sklearn.metrics import precision_recall_fscore_support
 base_dir = Path('/mnt/bigdata/datasets/camelyon-pcam')
 # tiles_dir = base_dir / Path('tiles')
 h5_dir = base_dir / Path('h5')
+ray_dir  = base_dir / Path('ray_sessions')
 
 
 ########################
@@ -36,39 +38,30 @@ h5_dir = base_dir / Path('h5')
 ########################
 static_config = {
     'epochs': 120,
-    'batch_size': 128
+    'batch_size': 48
 }
 
 
-##########################################
-# instantiate ray-tune experiment folder #
-##########################################
-train_session_name = generate_slug(2)
-session_dir = base_dir / 'ray_sessions' / train_session_name
-session_dir.mkdir(parents=True, exist_ok=True)
-
-
-################################
-# function to save checkpoints #
-################################
-def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics):
+##################################
+# function to save checkpoints   #
+# saves into the trial directory #
+##################################
+def save_checkpoint(epoch, model, optimizer, lr_scheduler, metrics):
     if train.get_context().get_world_rank() is None or train.get_context().get_world_rank() == 0: # only the no.1 worker manages checkpoints
-        checkpoint_data = {
-            'epoch': epoch,
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': lr_scheduler.state_dict(),
-        }
         if epoch > 4:
-            checkpoint_data['model_state'] = model.state_dict()
-            checkpoint_file = os.path.join(session_dir, f"{train_session_name}-{session.get_trial_name().split('_')[1]}-{epoch}.ckpt")
-            torch.save(checkpoint_data, checkpoint_file)
-            print(f'model checkpoint saved as {checkpoint_file}')
-    
-    session.report(
-        metrics=metrics
-    )
-
-
+            checkpoint_data = {
+                'epoch': epoch,
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': lr_scheduler.state_dict(),
+                'model_state' : model.state_dict()
+            }
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    torch.save(
+                        checkpoint_data,
+                        os.path.join(temp_checkpoint_dir, f"model-{epoch}.pt"),
+                    )
+                    checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
+                    train.report(metrics, checkpoint=checkpoint)
 
 
 ###############################
@@ -76,7 +69,7 @@ def save_checkpoint(epoch, model, optimizer, lr_scheduler, session_dir, metrics)
 ###############################
 def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     
-    assert torch.cuda.is_available(), 'GPU is required because of Pytorch-AMP'; device = 'cuda'
+    assert torch.cuda.is_available(), 'GPU is required because of Pytorch-AMP'; device = torch.device('cuda')
 
     # ########################
     # # read tiles with DALI #
@@ -96,8 +89,7 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     train_loader, val_loader, _ = load_pcam(
         dataset_root=data_dir, 
         batch_size=ray_config.get('batch_size', static_config.get('batch_size')), 
-        shuffle=False,
-        download=False
+        shuffle=True
     )
 
     # ⭐️⭐️ AMP GradScaler
@@ -106,34 +98,37 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
     ####################
     # model definition #
     ####################
+
     # from models.nvidia_resnets.resnet import se_resnext101_32x4d
     # model = se_resnext101_32x4d(
     #     pretrained=True
     # )
     # model.fc = torch.nn.Linear(in_features=2048, out_features=2, bias=True)
-    # model = model.to(device)
+    # model.to(device)
 
+
+    ####################
+    # model definition #
+    ####################
     from torchvision.models import densenet161, DenseNet161_Weights
-
     model = densenet161(
         weights=DenseNet161_Weights.IMAGENET1K_V1
     )
-
     model.fc = torch.nn.Linear(in_features=2208, out_features=2, bias=True)
-    model = model.to(device)
- 
+    model.to(device)
 
-    ######################
-    # loss and optimizer #
-    ######################
+
+    ####################
+    # loss & optimizer #
+    ####################
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(
         model.parameters(), 
         lr=ray_config.get('lr'), 
-        nesterov=ray_config.get('nesterov'), 
         momentum=ray_config.get('momentum')
     )
 
+    
     #############################################
     # ReduceLROnPlateau learning rate scheduler #
     #############################################
@@ -147,27 +142,44 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
         threshold=1e-4
     )
 
-    #####################
-    # checkpoint loader #
-    #####################
-    checkpoint = train.get_checkpoint()
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            checkpoint_dict = torch.load(
-                os.path.join(utils.find_latest_file(checkpoint_dir, '*.ckpt')),
-                )
-            if checkpoint_dict.get('model_state', None) is not None:
-                start_epoch = checkpoint_dict['epoch'] + 1
-                model.load_state_dict(checkpoint_dict.get('model_state', None))
-                optimizer.load_state_dict(checkpoint_dict['optimizer_state_dict'])
-                lr_scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
+
+    ############################
+    # manual checkpoint loader #
+    ############################
+    if 0:
+        model_checkpoint_path = '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/independent-dazzling-chameleon-of-reward/observant-guan_0_2024-02-12_21-53-42/checkpoint_000001/model-6.pt'
+        checkpoint_dict = torch.load(model_checkpoint_path)
+        model.load_state_dict(checkpoint_dict['model_state'])
+        optimizer.load_state_dict(checkpoint_dict['optimizer_state_dict'])
+        lr_scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
+        print(f'Loaded checkpoint from {model_checkpoint_path} successfully!')
+ 
+
+
+    ############################################################################
+    # ray checkpoint loader: will load the latest ckpt from training directory #
+    # unfortunately it does not work due to no GPU is available after restore  #
+    ############################################################################
+
+    if train.get_checkpoint():
+        loaded_checkpoint = train.get_checkpoint()
+        with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
+            latest_checkpoint_file: str | None = utils.find_latest_file(loaded_checkpoint_dir, '*.pt')
+            assert latest_checkpoint_file, f"checkpoint file not found in {loaded_checkpoint_dir}"
+            checkpoint_dict = torch.load(latest_checkpoint_file)
+            start_epoch = checkpoint_dict['epoch'] + 1
+            model.load_state_dict(checkpoint_dict.get('model_state', None))
+            optimizer.load_state_dict(checkpoint_dict['optimizer_state_dict'])
+            lr_scheduler.load_state_dict(checkpoint_dict['scheduler_state_dict'])
+            print(f'latest checkpoint {latest_checkpoint_file} successfully loaded!')
     else:
+        # print(f'checkpoint not found, starting from scratch (train.get_checkpoint() = {train.get_checkpoint()})')
         start_epoch = 0
+
 
     ############
     # training #
     ############
-
     for epoch in range(start_epoch, static_config.get('epochs', 120)):
 
         train_loss = 0
@@ -269,39 +281,39 @@ def trainer(ray_config, static_config=static_config, data_dir=h5_dir):
             epoch, 
             model, 
             optimizer, 
-            lr_scheduler, 
-            session_dir, 
+            lr_scheduler,
             metrics
         )
         # end of epoch run (identation!)
 
 
+
+
 def main():
+
 
     ########################
     # raytune search space #
     ########################
 
     ray_search_config = {
-        'nesterov': False,
-        'momentum': tune.uniform(0.05, 0.6),
-        'lr': tune.loguniform(0.005, 0.04),
-        'batch_size': tune.qrandint(16, 128, 16),
+        'momentum': 0.1,
+        'lr': 0.02,
+        'batch_size': 512
     }
 
     scheduler = ASHAScheduler(
         metric='val_accuracy',
         mode='max',
         max_t=static_config.get('epochs'),
-        grace_period=1,
+        grace_period=4,
         reduction_factor=2,
     )
 
     current_best_params = [{
-        'nesterov': False,
-        'momentum': 0.5,
+        'momentum': 0.1,
         'lr': 0.02,
-        'batch_size': 128,
+        'batch_size': 48,
     }]
 
     search_alg = HyperOptSearch(
@@ -318,6 +330,9 @@ def main():
         grace_period=4,
     )
 
+    def trial_str_creator(trial):
+        return generate_slug(2)
+
 
     #################
     # init ray-tune #
@@ -327,34 +342,47 @@ def main():
         include_dashboard=False
     )
 
-    tuner = tune.Tuner(
-        tune.with_resources(
-            trainable=trainer, 
-            resources={'cpu': 3, 'gpu': 0.20}
-        ),
-        param_space=ray_search_config,
-        run_config=train.RunConfig(
-            checkpoint_config=train.CheckpointConfig(num_to_keep=2),
-            storage_path=session_dir,
-            log_to_file=True,
-            stop=acc_plateau_stopper,
-            verbose=1,
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=100,
-            search_alg=search_alg,
-            scheduler=scheduler,
-            max_concurrent_trials=4
+    #######################################################################################
+    # can resume saved experiment (does not work unfortunately due to GPUs not available) #
+    #######################################################################################
+    resume = False
+    if resume:
+        experiment_path = '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/realistic-keen-gorilla-of-merriment' # path should be where the .pkl file is
+        assert tune.Tuner.can_restore(experiment_path), f'FATAL: experiment cannot be restored from {experiment_path}'
+        tuner = tune.Tuner.restore(
+            trainable=trainer,
+            param_space=ray_search_config,
+            path=experiment_path,
+            )
+        print(f'resuming experiment from {experiment_path} ', tuner.get_results())
+        print("")
+    else:
+        tuner = tune.Tuner(
+            tune.with_resources(
+                trainable=trainer,
+                resources={'cpu': 16, 'gpu': 1}
+            ),
+            param_space=ray_search_config,
+            run_config=train.RunConfig(
+                checkpoint_config=train.CheckpointConfig(
+                    num_to_keep=2,
+                    checkpoint_score_attribute='val_accuracy',
+                    checkpoint_score_order='max'
+                    ),
+                storage_path=ray_dir,
+                log_to_file=True,
+                # stop=acc_plateau_stopper,
+                verbose=1,
+                name=generate_slug()
+            ),
+            tune_config=tune.TuneConfig(
+                num_samples=1,
+                # search_alg=search_alg,
+                scheduler=scheduler,
+                max_concurrent_trials=1,
+                trial_name_creator=trial_str_creator
+            )
         )
-    )
-
-    ###############################
-    # can resume saved experiment #
-    ###############################
-    experiment_path = '/mnt/bigdata/datasets/camelyon-pcam/ray_sessions/ludicrous-mosquito/trainer_2024-02-10_11-26-12/' # path should be where the .pkl file is
-    if experiment_path is not None:
-        print(f'resuming experiment from {experiment_path}')
-        tuner = tune.Tuner.restore(path=experiment_path, trainable=trainer)
 
     ##################
     # run experiment #
